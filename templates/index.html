@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Links Page</title>
+</head>
+<body>
+    <h1>Links</h1>
+    <ul>
+    {% for label, link in links.items() %}
+        <li><a href="{{ link }}">{{ label }}</a></li>
+    {% endfor %}
+    </ul>
+</body>
+</html>
