@@ -15,12 +15,12 @@ targets:
       accessKeyPath: './var/access_key'
       secretKeyPath: './var/secret_key'
 
-  vast-nrs-opendata:
-    endpoint: https://nrs.int.janelia.org/
+  opendata:
+    endpoint: https://internal.hostname/
     bucket: opendata
 
-  vast-nrs-scicompsoft:
-    endpoint: https://nrs.int.janelia.org/
+  scicompsoft:
+    endpoint: https://internal.hostname/
     bucket: scicompsoft
 ```
 
