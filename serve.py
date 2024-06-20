@@ -11,11 +11,19 @@ from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.responses import Response, StreamingResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 
 # For debugging
 #boto3.set_stream_logger(name='botocore')
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 templates = Jinja2Templates(directory="templates")
 
 # Load target bucket configurations from a YAML file
@@ -51,13 +59,18 @@ for target, details in config['targets'].items():
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
         endpoint_url=details['endpoint']
-        )
+    )
 
     if anonymous:
         # hack to disable signing: https://stackoverflow.com/questions/34865927/can-i-use-boto3-anonymously
         client._request_signer.sign = (lambda *args, **kwargs: None)
 
-    s3_clients[target] = client
+    path = details['path'] if 'path' in details else None
+
+    s3_clients[target] = {
+        'client': client,
+        'prefix': path
+    }
 
 
 def create_xml_element(parent, key, value):
@@ -132,8 +145,13 @@ async def list_objects_v2(request: Request,
     if target not in s3_clients:
         raise HTTPException(status_code=404, detail="Target bucket not found")
 
-    s3_client = s3_clients[target]
+    s3_client_obj = s3_clients[target]
+    s3_client = s3_client_obj['client']
+    client_prefix = s3_client_obj['prefix']
     bucket_name = config['targets'][target]['bucket']
+
+    if client_prefix:
+        prefix = os.path.join(client_prefix, prefix) if prefix else client_prefix
 
     try:
         params = {"Bucket": bucket_name}
@@ -207,8 +225,13 @@ async def head_object(request: Request, target: str, key: str):
     if target not in s3_clients:
         raise HTTPException(status_code=404, detail="Target bucket not found")
 
-    s3_client = s3_clients[target]
+    s3_client_obj = s3_clients[target]
+    s3_client = s3_client_obj['client']
+    client_prefix = s3_client_obj['prefix']
     bucket_name = config['targets'][target]['bucket']
+
+    if client_prefix:
+        key = os.path.join(client_prefix, key) if key else client_prefix
 
     try:
         response = s3_client.head_object(Bucket=bucket_name, Key=key)
@@ -236,8 +259,13 @@ async def get_object(request: Request, target: str, key: str):
     if target not in s3_clients:
         raise HTTPException(status_code=404, detail="Target bucket not found")
 
-    s3_client = s3_clients[target]
+    s3_client_obj = s3_clients[target]
+    s3_client = s3_client_obj['client']
+    client_prefix = s3_client_obj['prefix']
     bucket_name = config['targets'][target]['bucket']
+
+    if client_prefix:
+        key = os.path.join(client_prefix, key) if key else client_prefix
 
     try:
         response = s3_client.get_object(Bucket=bucket_name, Key=key)
