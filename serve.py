@@ -65,11 +65,11 @@ for target, details in config['targets'].items():
         # hack to disable signing: https://stackoverflow.com/questions/34865927/can-i-use-boto3-anonymously
         client._request_signer.sign = (lambda *args, **kwargs: None)
 
-    path = details['path'] if 'path' in details else None
+    prefix = details['prefix'] if 'prefix' in details else None
 
     s3_clients[target] = {
         'client': client,
-        'prefix': path
+        'prefix': prefix
     }
 
 
@@ -120,6 +120,12 @@ def get_bucket_acl(request: Request, target: str):
     </AccessControlPolicy>
     """
     return Response(content=acl_xml, media_type="application/xml")
+
+
+def remove_prefix(key, client_prefix):
+    if key and client_prefix:
+        return key.removeprefix(client_prefix).removeprefix('/')
+    return key
 
 
 @app.get("/{target}/")
@@ -173,12 +179,12 @@ async def list_objects_v2(request: Request,
             params["Marker"] = marker
 
         response = s3_client.list_objects_v2(**params)
+        res_prefix = remove_prefix(prefix, client_prefix)
 
-        # Format the response to XML
-        xml_response = {
-            "IsTruncated": response.get("IsTruncated", False),
-            "Contents": [{
-                "Key": obj["Key"],
+        contents = []
+        for obj in response.get("Contents", []):
+            contents.append({
+                "Key": remove_prefix(obj["Key"], client_prefix),
                 "LastModified": obj["LastModified"].isoformat(),
                 "ETag": obj["ETag"],
                 "Size": obj["Size"],
@@ -187,19 +193,31 @@ async def list_objects_v2(request: Request,
                     "DisplayName": obj["Owner"]["DisplayName"] if "DisplayName" in obj["Owner"] else '',
                     "ID": obj["Owner"]["ID"]
                 } if "Owner" in obj else {}
-            } for obj in response.get("Contents", [])],
-            "Name": bucket_name,
-            "Prefix": prefix or "",
+            })
+
+        next_token = remove_prefix(response.get("NextContinuationToken", ""), client_prefix)
+
+        common_prefixes = []
+        for cp in response.get("CommonPrefixes", []):
+            common_prefix = remove_prefix(cp["Prefix"], client_prefix)
+            common_prefixes.append({"Prefix": common_prefix})
+
+        # Format the response to XML
+        xml_response = {
+            "IsTruncated": response.get("IsTruncated", False),
+            "Contents": contents,
+            "Name": target,
+            "Prefix": res_prefix or "",
             "Delimiter": delimiter or "",
             "MaxKeys": max_keys,
-            "CommonPrefixes": [{"Prefix": cp["Prefix"]} for cp in response.get("CommonPrefixes", [])],
+            "CommonPrefixes": common_prefixes,
             "EncodingType": encoding_type or "",
             "KeyCount": response.get("KeyCount", 0),
             "ContinuationToken": continuation_token or "",
-            "NextContinuationToken": response.get("NextContinuationToken", ""),
+            "NextContinuationToken": next_token,
             "StartAfter": start_after or "",
             "Marker": marker or "",
-            "NextMarker": response.get("NextContinuationToken", "")
+            "NextMarker": next_token
         }
 
 
