@@ -113,7 +113,7 @@ def remove_prefix(client_prefix, key):
     return key
 
 
-async def browse_bucket(request: Request, target: str, prefix: str):
+async def browse_bucket(request: Request, target: str, prefix: str, max_keys: int = 10):
     if target not in s3_clients:
         raise HTTPException(status_code=404, detail="Target bucket not found")
 
@@ -133,7 +133,7 @@ async def browse_bucket(request: Request, target: str, prefix: str):
     parent_prefix = os.path.dirname(prefix.rstrip('/'))
 
     try:
-        params = {"Bucket": bucket_name, "Prefix": real_prefix, "Delimiter": "/", "MaxKeys": 10}
+        params = {"Bucket": bucket_name, "Prefix": real_prefix, "Delimiter": "/", "MaxKeys": max_keys}
         response = s3_client.list_objects_v2(**params)
 
         common_prefixes = [prefix["Prefix"] for prefix in response.get("CommonPrefixes", [])]
@@ -210,7 +210,7 @@ async def list_objects_v2(request: Request,
                           start_after: Optional[str] = Query(None, alias="start-after")):
 
     if browse is not None:
-        return await browse_bucket(request, target, path)
+        return await browse_bucket(request, target, path, max_keys)
 
     if path:
         return await get_object(request, target, path)
