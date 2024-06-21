@@ -7,15 +7,20 @@
     <h1>Browsing {{ bucket_name }}</h1>
     <p>S3 URL: {{ request.url.scheme }}://{{ request.url.hostname }}{% if request.url.port %}:{{ request.url.port }}{% endif %}{{ request.url.path }}</p>
     
+    <p>parent_prefix: {{parent_prefix}}</p>
+    <p>prefix: {{prefix}}</p>
+    <p>real_prefix: {{real_prefix}}</p>
+    <p>client_prefix: {{client_prefix}}</p>
+    
     <ul>
         {% if prefix %}
         <li><a href="/{{ target }}/{{ parent_prefix }}?browse">..</a></li>
         {% endif %}
-        {% for prefix in common_prefixes %}
-            <li><a href="/{{ target }}/{{ prefix }}?browse">{{ rm_prefix(prefix) }} (CP: {{ prefix }})</a></li>
+        {% for common_prefix in common_prefixes %}
+            <li><a href="/{{ target }}/{{ remove_prefix(client_prefix, common_prefix) }}?browse">{{ remove_prefix(real_prefix, common_prefix) }}</a></li>
         {% endfor %}
         {% for obj in contents %}
-            <li><a href="/{{ target }}/{{ obj.key }}">{{ rm_prefix(obj.key) }} (OBJ: {{ obj.key }})</a></li>
+            <li><a href="/{{ target }}/{{ remove_prefix(client_prefix, obj.key) }}">{{ remove_prefix(real_prefix, obj.key) }}</a></li>
         {% endfor %}
     </ul>
 

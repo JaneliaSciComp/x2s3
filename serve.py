@@ -74,25 +74,16 @@ for target, details in config['targets'].items():
     }
 
 
-def create_xml_element(parent, key, value):
-    """Helper function to create an XML element from a key-value pair."""
-    if isinstance(value, dict):
-        for sub_key, sub_value in value.items():
-            create_xml_element(parent, sub_key, sub_value)
-    elif isinstance(value, list):
-        elem = ET.SubElement(parent, key)
-        for item in value:
-            create_xml_element(elem, key, item)
-    else:
-        elem = ET.SubElement(parent, key)
-        elem.text = str(value)
+def add_elem(parent, key):
+    elem = ET.SubElement(parent, key)
+    return elem
 
+def add_telem(parent, key, value):
+    if not value: return None
+    elem = ET.SubElement(parent, key)
+    elem.text = str(value)
+    return elem
 
-def create_xml_response(root_element_name, data):
-    root = ET.Element(root_element_name)
-    for key, value in data.items():
-        create_xml_element(root, key, value)
-    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
 def get_bucket_acl(request: Request, target: str):
@@ -131,14 +122,14 @@ async def browse_bucket(request: Request, target: str, prefix: str):
     client_prefix = s3_client_obj['prefix']
     bucket_name = config['targets'][target]['bucket']
     
-    if prefix and not prefix.endswith('/'):
-        prefix += '/'
 
     real_prefix = prefix
     if client_prefix:
         real_prefix = os.path.join(client_prefix, prefix) if prefix else client_prefix
 
-    rm_prefix = partial(remove_prefix, real_prefix)
+    if real_prefix and not real_prefix.endswith('/'):
+        real_prefix += '/'
+
     parent_prefix = os.path.dirname(prefix.rstrip('/'))
 
     try:
@@ -156,7 +147,9 @@ async def browse_bucket(request: Request, target: str, prefix: str):
             "common_prefixes": common_prefixes,
             "contents": contents,
             "parent_prefix": parent_prefix,
-            "rm_prefix": rm_prefix
+            "real_prefix": real_prefix,
+            "client_prefix": client_prefix,
+            "remove_prefix": remove_prefix
         })
 
     except (NoCredentialsError, PartialCredentialsError):
@@ -236,71 +229,67 @@ async def list_objects_v2(request: Request,
     client_prefix = s3_client_obj['prefix']
     bucket_name = config['targets'][target]['bucket']
 
+    # prefix user-supplied prefix with configured prefix
     if client_prefix:
         prefix = os.path.join(client_prefix, prefix) if prefix else client_prefix
 
+    # ensure the prefix ends with a slash
+    if prefix and not prefix.endswith('/'):
+        prefix += '/'
+
     try:
-        params = {"Bucket": bucket_name}
-        if continuation_token is not None:
-            params["ContinuationToken"] = continuation_token
-        if delimiter is not None:
-            params["Delimiter"] = delimiter
-        if encoding_type is not None:
-            params["EncodingType"] = encoding_type
-        if fetch_owner is not None:
-            params["FetchOwner"] = fetch_owner
-        if max_keys is not None:
-            params["MaxKeys"] = max_keys
-        if prefix is not None:
-            params["Prefix"] = prefix
-        if start_after is not None:
-            params["StartAfter"] = start_after
-        if marker is not None:
-            params["Marker"] = marker
+        params = {
+            "Bucket": bucket_name,
+            "ContinuationToken": continuation_token,
+            "Delimiter": delimiter,
+            "EncodingType": encoding_type,
+            "FetchOwner": fetch_owner,
+            "MaxKeys": max_keys,
+            "Prefix": prefix,
+            "StartAfter": start_after
+        }
+        # Remove any None values because boto3 doesn't like those
+        params = {k: v for k, v in params.items() if v is not None}
 
         response = s3_client.list_objects_v2(**params)
         res_prefix = remove_prefix(client_prefix, prefix)
-
-        contents = []
-        for obj in response.get("Contents", []):
-            contents.append({
-                "Key": remove_prefix(client_prefix, obj["Key"]),
-                "LastModified": obj["LastModified"].isoformat(),
-                "ETag": obj["ETag"],
-                "Size": obj["Size"],
-                "StorageClass": obj.get("StorageClass", ""),
-                "Owner": {
-                    "DisplayName": obj["Owner"]["DisplayName"] if "DisplayName" in obj["Owner"] else '',
-                    "ID": obj["Owner"]["ID"]
-                } if "Owner" in obj else {}
-            })
-
         next_token = remove_prefix(client_prefix, response.get("NextContinuationToken", ""))
 
-        common_prefixes = []
+        root = ET.Element("ListBucketResult")
+        add_telem(root, "IsTruncated", response.get("IsTruncated", False))
+        add_telem(root, "Name", target)
+        add_telem(root, "Prefix", res_prefix)
+        add_telem(root, "Delimiter", delimiter)
+        add_telem(root, "MaxKeys", max_keys)
+        add_telem(root, "EncodingType", encoding_type)
+        add_telem(root, "KeyCount", response.get("KeyCount", 0))
+        add_telem(root, "ContinuationToken", continuation_token)
+        add_telem(root, "NextContinuationToken", next_token)
+        add_telem(root, "ContinuationToken", continuation_token)
+        add_telem(root, "Marker", marker)
+        add_telem(root, "NextMarker", next_token)
+        add_telem(root, "StartAfter", start_after)
+
+        common_prefixes = add_elem(root, "CommonPrefixes")
         for cp in response.get("CommonPrefixes", []):
             common_prefix = remove_prefix(client_prefix, cp["Prefix"])
-            common_prefixes.append({"Prefix": common_prefix})
+            add_telem(common_prefixes, "Prefix", common_prefix)
 
-        # Format the response to XML
-        xml_response = {
-            "IsTruncated": response.get("IsTruncated", False),
-            "Contents": contents,
-            "Name": target,
-            "Prefix": res_prefix or "",
-            "Delimiter": delimiter or "",
-            "MaxKeys": max_keys,
-            "CommonPrefixes": common_prefixes,
-            "EncodingType": encoding_type or "",
-            "KeyCount": response.get("KeyCount", 0),
-            "ContinuationToken": continuation_token or "",
-            "NextContinuationToken": next_token,
-            "StartAfter": start_after or "",
-            "Marker": marker or "",
-            "NextMarker": next_token
-        }
+        for obj in response.get("Contents", []):
+            contents = add_elem(root, "Contents")
+            add_telem(contents, "Key", remove_prefix(client_prefix, obj["Key"]))
+            add_telem(contents, "LastModified", obj["LastModified"].isoformat())
+            add_telem(contents, "ETag", obj["ETag"])
+            add_telem(contents, "Size", obj["Size"])
+            add_telem(contents, "StorageClass", obj.get("StorageClass", ""))
+            if "Owner" in obj:
+                display_name = obj["Owner"]["DisplayName"] if "DisplayName" in obj["Owner"] else ''
+                owner_id = obj["Owner"]["ID"] if "ID" in obj["Owner"] else ''
+                owner = add_elem(root, "Owner")
+                add_telem(owner, "DisplayName", display_name)
+                add_telem(owner, "ID", owner_id)
 
-        xml_output = create_xml_response("ListBucketResult", xml_response)
+        xml_output = ET.tostring(root, encoding="utf-8", xml_declaration=True)
         return Response(content=xml_output, media_type="application/xml")
 
     except (NoCredentialsError, PartialCredentialsError) as e:
