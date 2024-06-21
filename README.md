@@ -31,7 +31,7 @@ You can either provide credentials, or it will fallback on anonymous access.
 
 ```bash
 conda env create -f environment.yml -y
-conda activate zarrcade
+conda activate jproxy
 ```
 
 ## Run
