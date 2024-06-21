@@ -22,21 +22,24 @@ targets:
   scicompsoft:
     endpoint: https://internal.hostname/
     bucket: scicompsoft
+    prefix: path/to/data
 ```
 
 You can either provide credentials, or it will fallback on anonymous access.
 
 
-## Create environment
+### Install dependencies
 
-```bash
-conda env create -f environment.yml -y
-conda activate jproxy
-```
+Create a virtualenv and install the dependencies:
+
+    virtualenv env
+    source env/bin/activate
+    pip install -r requirements.txt
+
 
 ## Run
 
 ```bash
-uvicorn serve:app --host 0.0.0.0 --port 8000 --workers 1 --access-log
+uvicorn serve:app --host 0.0.0.0 --port 8000 --workers 1 --access-log --ssl-keyfile /opt/tls/cert.key --ssl-certfile /opt/tls/cert.crt --reload
 ```
 

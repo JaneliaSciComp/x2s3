@@ -1,9 +1,0 @@
-name: jproxy
-channels:
-  - conda-forge
-dependencies:
-  - boto3
-  - fastapi
-  - pyyaml
-  - uvicorn
-  - loguru
