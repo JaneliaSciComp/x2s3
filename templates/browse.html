@@ -1,17 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Browsing {{ bucket_name }}</title>
+    <title>S3 Proxy: {{ request.url.path }}</title>
 </head>
 <body>
-    <h1>Browsing {{ bucket_name }}</h1>
-    <p>S3 URL: {{ request.url.scheme }}://{{ request.url.hostname }}{% if request.url.port %}:{{ request.url.port }}{% endif %}{{ request.url.path }}</p>
-    
-    <p>parent_prefix: {{parent_prefix}}</p>
-    <p>prefix: {{prefix}}</p>
-    <p>real_prefix: {{real_prefix}}</p>
-    <p>client_prefix: {{client_prefix}}</p>
-    
+    <a href="/">Return to bucket list</a>
+    <h2>{{ request.url.scheme }}://{{ request.url.hostname }}{% if request.url.port %}:{{ request.url.port }}{% endif %}{{ request.url.path }}</h2>
     <ul>
         {% if prefix %}
         <li><a href="/{{ target }}/{{ parent_prefix }}?browse">..</a></li>
