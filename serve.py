@@ -22,7 +22,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET","HEAD"],
     allow_headers=["*"],
 )
 templates = Jinja2Templates(directory="templates")
