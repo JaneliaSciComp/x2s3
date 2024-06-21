@@ -3,6 +3,7 @@ import yaml
 import os
 from typing import Optional, Dict
 import xml.etree.ElementTree as ET
+from functools import partial
 
 from loguru import logger
 import boto3
@@ -76,28 +77,21 @@ for target, details in config['targets'].items():
 def create_xml_element(parent, key, value):
     """Helper function to create an XML element from a key-value pair."""
     if isinstance(value, dict):
-        elem = ET.SubElement(parent, key)
         for sub_key, sub_value in value.items():
-            create_xml_element(elem, sub_key, sub_value)
+            create_xml_element(parent, sub_key, sub_value)
     elif isinstance(value, list):
+        elem = ET.SubElement(parent, key)
         for item in value:
-            elem = ET.SubElement(parent, key)
-            if isinstance(item, dict):
-                for sub_key, sub_value in item.items():
-                    create_xml_element(elem, sub_key, sub_value)
-            else:
-                elem.text = str(item)
+            create_xml_element(elem, key, item)
     else:
         elem = ET.SubElement(parent, key)
         elem.text = str(value)
 
 
-def create_xml_response(data):
-    root = ET.Element("ListBucketResult")
-
+def create_xml_response(root_element_name, data):
+    root = ET.Element(root_element_name)
     for key, value in data.items():
         create_xml_element(root, key, value)
-
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
@@ -122,15 +116,95 @@ def get_bucket_acl(request: Request, target: str):
     return Response(content=acl_xml, media_type="application/xml")
 
 
-def remove_prefix(key, client_prefix):
+def remove_prefix(client_prefix, key):
     if key and client_prefix:
         return key.removeprefix(client_prefix).removeprefix('/')
     return key
 
 
-@app.get("/{target}/")
+async def browse_bucket(request: Request, target: str, prefix: str):
+    if target not in s3_clients:
+        raise HTTPException(status_code=404, detail="Target bucket not found")
+
+    s3_client_obj = s3_clients[target]
+    s3_client = s3_client_obj['client']
+    client_prefix = s3_client_obj['prefix']
+    bucket_name = config['targets'][target]['bucket']
+    
+    if prefix and not prefix.endswith('/'):
+        prefix += '/'
+
+    real_prefix = prefix
+    if client_prefix:
+        real_prefix = os.path.join(client_prefix, prefix) if prefix else client_prefix
+
+    rm_prefix = partial(remove_prefix, real_prefix)
+    parent_prefix = os.path.dirname(prefix.rstrip('/'))
+
+    try:
+        params = {"Bucket": bucket_name, "Prefix": real_prefix, "Delimiter": "/", "MaxKeys": 10}
+        response = s3_client.list_objects_v2(**params)
+
+        common_prefixes = [prefix["Prefix"] for prefix in response.get("CommonPrefixes", [])]
+        contents = [{"key": obj["Key"]} for obj in response.get("Contents", []) if obj["Key"] != prefix]
+
+        return templates.TemplateResponse("browse.html", {
+            "request": request,
+            "bucket_name": bucket_name,
+            "prefix": prefix,
+            "target": target,
+            "common_prefixes": common_prefixes,
+            "contents": contents,
+            "parent_prefix": parent_prefix,
+            "rm_prefix": rm_prefix
+        })
+
+    except (NoCredentialsError, PartialCredentialsError):
+        raise HTTPException(status_code=500, detail="AWS credentials not configured properly.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def get_object(request: Request, target: str, key: str):
+    if target not in s3_clients:
+        raise HTTPException(status_code=404, detail="Target bucket not found")
+
+    s3_client_obj = s3_clients[target]
+    s3_client = s3_client_obj['client']
+    client_prefix = s3_client_obj['prefix']
+    bucket_name = config['targets'][target]['bucket']
+
+    if client_prefix:
+        key = os.path.join(client_prefix, key) if key else client_prefix
+
+    try:
+        response = s3_client.get_object(Bucket=bucket_name, Key=key)
+        filename = os.path.basename(key)
+        return StreamingResponse(response['Body'], media_type='application/octet-stream', headers={
+            'Content-Disposition': f'attachment; filename="{filename}"'
+        })
+    except s3_client.exceptions.NoSuchKey:
+        logger.info(f"Object not found: {key}")
+        raise HTTPException(status_code=404, detail="Object not found")
+    except (NoCredentialsError, PartialCredentialsError):
+        logger.opt(exception=sys.exc_info()).info("AWS credentials not configured properly")
+        raise HTTPException(status_code=500, detail="AWS credentials not configured properly")
+    except botocore.exceptions.ReadTimeoutError as e:
+        raise HTTPException(status_code=408, detail="Upstream endpoint timed out")
+    except botocore.exceptions.ClientError as e:
+        logger.opt(exception=sys.exc_info()).info("Error getting object")
+        code = e.response['ResponseMetadata']['HTTPStatusCode']
+        raise HTTPException(status_code=code, detail=str(e))
+    except Exception as e:
+        logger.opt(exception=sys.exc_info()).info("Error getting object")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/{target}/{path:path}")
 async def list_objects_v2(request: Request,
                           target: str,
+                          path: str,
+                          browse: str = Query(None),
                           acl: str = Query(None),
                           list_type: int = Query(2, alias="list-type"),
                           continuation_token: Optional[str] = Query(None, alias="continuation-token"),
@@ -141,6 +215,12 @@ async def list_objects_v2(request: Request,
                           prefix: Optional[str] = Query(None, alias="prefix"),
                           marker: Optional[str] = Query(None, alias="marker"),
                           start_after: Optional[str] = Query(None, alias="start-after")):
+
+    if browse is not None:
+        return await browse_bucket(request, target, path)
+
+    if path:
+        return await get_object(request, target, path)
 
     if acl is not None:
         return get_bucket_acl(request, target)
@@ -179,12 +259,12 @@ async def list_objects_v2(request: Request,
             params["Marker"] = marker
 
         response = s3_client.list_objects_v2(**params)
-        res_prefix = remove_prefix(prefix, client_prefix)
+        res_prefix = remove_prefix(client_prefix, prefix)
 
         contents = []
         for obj in response.get("Contents", []):
             contents.append({
-                "Key": remove_prefix(obj["Key"], client_prefix),
+                "Key": remove_prefix(client_prefix, obj["Key"]),
                 "LastModified": obj["LastModified"].isoformat(),
                 "ETag": obj["ETag"],
                 "Size": obj["Size"],
@@ -195,11 +275,11 @@ async def list_objects_v2(request: Request,
                 } if "Owner" in obj else {}
             })
 
-        next_token = remove_prefix(response.get("NextContinuationToken", ""), client_prefix)
+        next_token = remove_prefix(client_prefix, response.get("NextContinuationToken", ""))
 
         common_prefixes = []
         for cp in response.get("CommonPrefixes", []):
-            common_prefix = remove_prefix(cp["Prefix"], client_prefix)
+            common_prefix = remove_prefix(client_prefix, cp["Prefix"])
             common_prefixes.append({"Prefix": common_prefix})
 
         # Format the response to XML
@@ -220,8 +300,7 @@ async def list_objects_v2(request: Request,
             "NextMarker": next_token
         }
 
-
-        xml_output = create_xml_response(xml_response)
+        xml_output = create_xml_response("ListBucketResult", xml_response)
         return Response(content=xml_output, media_type="application/xml")
 
     except (NoCredentialsError, PartialCredentialsError) as e:
@@ -272,46 +351,14 @@ async def head_object(request: Request, target: str, key: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/{target}/{key:path}")
-async def get_object(request: Request, target: str, key: str):
-    if target not in s3_clients:
-        raise HTTPException(status_code=404, detail="Target bucket not found")
-
-    s3_client_obj = s3_clients[target]
-    s3_client = s3_client_obj['client']
-    client_prefix = s3_client_obj['prefix']
-    bucket_name = config['targets'][target]['bucket']
-
-    if client_prefix:
-        key = os.path.join(client_prefix, key) if key else client_prefix
-
-    try:
-        response = s3_client.get_object(Bucket=bucket_name, Key=key)
-        return StreamingResponse(response['Body'], media_type='application/octet-stream', headers={
-            'Content-Disposition': f'attachment; filename="{key}"'
-        })
-    except s3_client.exceptions.NoSuchKey:
-        logger.info(f"Object not found: {key}")
-        raise HTTPException(status_code=404, detail="Object not found")
-    except (NoCredentialsError, PartialCredentialsError):
-        logger.opt(exception=sys.exc_info()).info("AWS credentials not configured properly")
-        raise HTTPException(status_code=500, detail="AWS credentials not configured properly")
-    except botocore.exceptions.ReadTimeoutError as e:
-        raise HTTPException(status_code=408, detail="Upstream endpoint timed out")
-    except botocore.exceptions.ClientError as e:
-        logger.opt(exception=sys.exc_info()).info("Error getting object")
-        code = e.response['ResponseMetadata']['HTTPStatusCode']
-        raise HTTPException(status_code=code, detail=str(e))
-    except Exception as e:
-        logger.opt(exception=sys.exc_info()).info("Error getting object")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
-    bucket_list = { target: f"/{target}/?list-type=2&max-keys=1" for target in s3_clients.keys()}
+    bucket_list = { target: f"/{target}/?browse" for target in s3_clients.keys()}
     return templates.TemplateResponse("index.html", {"request": request, "links": bucket_list})
+
 
 
 if __name__ == "__main__":

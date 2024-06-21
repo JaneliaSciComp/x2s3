@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Browsing {{ bucket_name }}</title>
+</head>
+<body>
+    <h1>Browsing {{ bucket_name }}</h1>
+    <p>S3 URL: {{ request.url.scheme }}://{{ request.url.hostname }}{% if request.url.port %}:{{ request.url.port }}{% endif %}{{ request.url.path }}</p>
+    
+    <ul>
+        {% if prefix %}
+        <li><a href="/{{ target }}/{{ parent_prefix }}?browse">..</a></li>
+        {% endif %}
+        {% for prefix in common_prefixes %}
+            <li><a href="/{{ target }}/{{ prefix }}?browse">{{ rm_prefix(prefix) }} (CP: {{ prefix }})</a></li>
+        {% endfor %}
+        {% for obj in contents %}
+            <li><a href="/{{ target }}/{{ obj.key }}">{{ rm_prefix(obj.key) }} (OBJ: {{ obj.key }})</a></li>
+        {% endfor %}
+    </ul>
+
+</body>
+</html>
