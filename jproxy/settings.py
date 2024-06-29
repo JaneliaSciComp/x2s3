@@ -59,7 +59,9 @@ class Settings(BaseSettings):
 
 
     def get_target_config(self, name):
-        return self.target_map[name]
+        if name in self.target_map:
+            return self.target_map[name]
+        return None
 
         
     @classmethod

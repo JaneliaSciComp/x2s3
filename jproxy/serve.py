@@ -126,30 +126,27 @@ async def target_dispatcher(request: Request,
                             marker: Optional[str] = Query(None, alias="marker"),
                             start_after: Optional[str] = Query(None, alias="start-after")):
 
-    try:
-        target_config = app.settings.get_target_config(target_name)
-        if not target_config:
-            raise HTTPException(status_code=404, detail="Target bucket not found")
+    target_config = app.settings.get_target_config(target_name)
+    if not target_config:
+        raise HTTPException(status_code=404, detail="Target bucket not found")
 
-        if acl is not None:
-            return get_read_access_acl()
+    if acl is not None:
+        return get_read_access_acl()
 
-        client = app.clients[target_name]
+    client = app.clients[target_name]
 
-        if list_type:
-            if list_type == 2:
-                return await client.list_objects_v2(request, continuation_token, delimiter, \
-                    encoding_type, fetch_owner, max_keys, prefix, marker, start_after)
-            else:
-                raise HTTPException(status_code=400, detail="Invalid list type")
-
-        if not path or path.endswith("/"):
-            return await browse_bucket(request, target_name, path, max_keys)
+    if list_type:
+        if list_type == 2:
+            return await client.list_objects_v2(continuation_token, delimiter, \
+                encoding_type, fetch_owner, max_keys, prefix, start_after)
         else:
-            return await client.get_object(path)
-    except:
-        logger.opt(exception=sys.exc_info()).info("Error in target dispatcher")
-        raise HTTPException(status_code=500, detail="Error in target dispatcher")
+            raise HTTPException(status_code=400, detail="Invalid list type")
+
+    if not path or path.endswith("/"):
+        return await browse_bucket(request, target_name, path, max_keys)
+    else:
+        return await client.get_object(path)
+    
 
 
 @app.head("/{target_name}/{key:path}")
