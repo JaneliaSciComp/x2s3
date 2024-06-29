@@ -43,3 +43,6 @@ Create a virtualenv and install the dependencies:
 uvicorn jproxy.serve:app --host 0.0.0.0 --port 8000 --workers 1 --access-log --ssl-keyfile /opt/tls/cert.key --ssl-certfile /opt/tls/cert.crt --reload
 ```
 
+# Attributions
+
+Proxy icons created by <a href="https://www.flaticon.com/free-icons/proxy" title="proxy icons">Uniconlabs - Flaticon</a>

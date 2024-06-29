@@ -2,9 +2,12 @@
 <html>
 <head>
     <title>S3 Proxy</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
 </head>
 <body>
-    <h1>Buckets</h1>
+    <a href="/"><img src="{{ url_for('static', path='/favicon-32x32.png') }}" alt="JProxy Logo"></a>
+    <h1>Data Sets</h1>
     <ul>
     {% for label, link in links.items() %}
         <li><a href="{{ link }}">{{ label }}</a></li>

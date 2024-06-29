@@ -4,7 +4,8 @@ from typing import Optional
 
 from loguru import logger
 from fastapi import FastAPI, HTTPException, Request, Query
-from fastapi.responses import Response, HTMLResponse, JSONResponse
+from fastapi.responses import Response, HTMLResponse, JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -23,6 +24,7 @@ app.add_middleware(
     allow_methods=["GET","HEAD"],
     allow_headers=["*"],
 )
+app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 @app.exception_handler(StarletteHTTPException)
@@ -169,7 +171,7 @@ async def head_object(request: Request, target_name: str, key: str):
         raise HTTPException(status_code=500, detail="Error requesting head")
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def read_root(request: Request):
     try:
         bucket_list = { target: f"/{target}/" for target in app.settings.get_targets()}
@@ -179,6 +181,9 @@ async def read_root(request: Request):
         raise HTTPException(status_code=500, detail="Error building index")
 
 
+@app.get('/favicon.ico', include_in_schema=False)
+async def favicon():
+    return FileResponse('static/favicon.ico')
 
 if __name__ == "__main__":
     import uvicorn

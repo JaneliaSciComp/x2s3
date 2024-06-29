@@ -2,10 +2,13 @@
 <html>
 <head>
     <title>S3 Proxy: {{ request.url.path }}</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
 </head>
 
 <body>
-    <a href="/">Return to bucket list</a>
+    <a href="/"><img src="{{ url_for('static', path='/favicon-32x32.png') }}" alt="JProxy Logo"></a>
+    
     <h2>{{ request.url.scheme }}://{{ request.url.hostname }}{% if request.url.port %}:{{ request.url.port }}{% endif %}{{ request.url.path }}</h2>
     <ul>
         {% if prefix %}
