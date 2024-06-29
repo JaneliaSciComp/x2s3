@@ -3,6 +3,7 @@
 <head>
     <title>S3 Proxy: {{ request.url.path }}</title>
 </head>
+
 <body>
     <a href="/">Return to bucket list</a>
     <h2>{{ request.url.scheme }}://{{ request.url.hostname }}{% if request.url.port %}:{{ request.url.port }}{% endif %}{{ request.url.path }}</h2>
@@ -11,10 +12,10 @@
         <li><a href="/{{ target }}/{{ parent_prefix }}">..</a></li>
         {% endif %}
         {% for common_prefix in common_prefixes %}
-            <li><a href="/{{ target }}/{{ remove_prefix(client_prefix, common_prefix) }}">{{ remove_prefix(real_prefix, common_prefix) }}</a></li>
+            <li><a href="/{{ target }}/{{ common_prefix }}">{{ remove_prefix(prefix, common_prefix) }}</a></li>
         {% endfor %}
         {% for obj in contents %}
-            <li><a href="/{{ target }}/{{ remove_prefix(client_prefix, obj.key) }}">{{ remove_prefix(real_prefix, obj.key) }}</a></li>
+            <li><a href="/{{ target }}/{{ obj.key }}">{{ remove_prefix(prefix, obj.key) }}</a></li>
         {% endfor %}
     </ul>
 

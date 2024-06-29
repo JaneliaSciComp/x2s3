@@ -8,18 +8,18 @@ Create a `config.yaml` file that contains all of your buckets:
 
 ```yaml
 targets:
-  scicompsoft-public:
+  - name: scicompsoft-public
     endpoint: https://s3.us-east-1.lyvecloud.seagate.com/
     bucket: scicompsoft-public
     credentials:
       accessKeyPath: './var/access_key'
       secretKeyPath: './var/secret_key'
 
-  opendata:
+  - name: opendata
     endpoint: https://internal.hostname/
     bucket: opendata
 
-  scicompsoft:
+  - name: scicompsoft
     endpoint: https://internal.hostname/
     bucket: scicompsoft
     prefix: path/to/data
@@ -40,6 +40,6 @@ Create a virtualenv and install the dependencies:
 ## Run
 
 ```bash
-uvicorn serve:app --host 0.0.0.0 --port 8000 --workers 1 --access-log --ssl-keyfile /opt/tls/cert.key --ssl-certfile /opt/tls/cert.crt --reload
+uvicorn jproxy.serve:app --host 0.0.0.0 --port 8000 --workers 1 --access-log --ssl-keyfile /opt/tls/cert.key --ssl-certfile /opt/tls/cert.crt --reload
 ```
 
