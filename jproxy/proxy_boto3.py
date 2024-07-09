@@ -7,7 +7,7 @@ import boto3
 import botocore
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 from fastapi import HTTPException
-from fastapi.responses import Response, StreamingResponse, HTMLResponse
+from fastapi.responses import Response, StreamingResponse, HTMLResponse, JSONResponse
 
 from jproxy.utils import *
 from jproxy.client import ProxyClient
@@ -31,6 +31,17 @@ def handle_s3_exception(e):
     else:
         logger.opt(exception=sys.exc_info()).info("Error using boto S3 API")
         raise HTTPException(status_code=500, detail="Error communicating with AWS S3")
+
+
+def get_nosuchkey_response(key):
+    return Response(content=f"""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Error>
+            <Code>NoSuchKey</Code>
+            <Message>The specified key does not exist.</Message>
+            <Key>{key}</Key>
+        </Error>
+        """, status_code=404, media_type="application/xml")
 
 
 class S3ProxyClient(ProxyClient):
@@ -82,9 +93,8 @@ class S3ProxyClient(ProxyClient):
                 "Last-Modified": s3_res.get("LastModified").strftime("%a, %d %b %Y %H:%M:%S GMT")
             }
             return Response(headers=headers)
-        except self.client.exceptions.NoSuchKey as e:
-            logger.info(f"Object not found: {key}")
-            raise HTTPException(status_code=404, detail="Object not found") from e
+        except self.client.exceptions.NoSuchKey:
+            return get_nosuchkey_response(key)
         except Exception as e:
             handle_s3_exception(e)
 
@@ -100,9 +110,8 @@ class S3ProxyClient(ProxyClient):
             return StreamingResponse(response['Body'], media_type='application/octet-stream', headers={
                 'Content-Disposition': f'attachment; filename="{filename}"'
             })
-        except self.client.exceptions.NoSuchKey as e:
-            logger.info(f"Object not found: {key}")
-            raise HTTPException(status_code=404, detail="Object not found") from e
+        except self.client.exceptions.NoSuchKey:
+            return get_nosuchkey_response(key)
         except Exception as e:
             handle_s3_exception(e)
 

@@ -99,9 +99,8 @@ class FSSpecProxyClient(ProxyClient):
                 logger.error(f"Unknown object type {info['type']} for {path}")
                 return Response(status_code=500)
 
-        except FileNotFoundError as e:
-            logger.info(f"Object not found: {key}")
-            raise HTTPException(status_code=404) from e
+        except FileNotFoundError:
+            return get_nosuchkey_response(key)
         except Exception as e:
             return handle_s3_exception(e)
 
@@ -124,7 +123,6 @@ class FSSpecProxyClient(ProxyClient):
                 'Content-Disposition': f'attachment; filename="{filename}"'
             })
         except FileNotFoundError as e:
-            logger.info(f"Object not found: {key}")
             return get_nosuchkey_response(key)
         except Exception as e:
             return handle_s3_exception(e)
