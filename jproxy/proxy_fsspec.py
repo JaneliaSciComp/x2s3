@@ -5,7 +5,6 @@ from typing_extensions import override
 import fsspec
 from loguru import logger
 from fsspec.exceptions import FSTimeoutError
-from fastapi import HTTPException
 from fastapi.responses import Response, JSONResponse, StreamingResponse
 
 from jproxy.utils import *
@@ -17,8 +16,6 @@ def handle_s3_exception(e):
     """
     if isinstance(e, FSTimeoutError):
         return JSONResponse({"error":"Upstream endpoint timed out"}, status_code=408)
-    elif isinstance(e, FileNotFoundError):
-        return JSONResponse({"error":"Upstream resource not found"}, status_code=404)
     else:
         logger.opt(exception=sys.exc_info()).error("Error using fsspec S3 API")
         return JSONResponse({"error":"Error communicating with AWS S3"}, status_code=500)
@@ -74,16 +71,15 @@ class FSSpecProxyClient(ProxyClient):
     async def head_object(self, key: str):
         try:
             path = f"{self.bucket_name}/{key}"
-            #logger.info(f"path: {path}")
             info = self.fs.info(path)
-            #logger.info(info)
             content_type = info.get('ContentType')
             if not content_type:
+                # TODO: VAST sometimes drops content-type for some reason..
+                #       we need a more robust way to infer it
                 if key.endswith('.json'):
                     content_type = 'application/json'
                 else:
                     content_type = 'application/octet-stream'
-                #logger.warning(f"Missing content type for {key}, assuming {content_type}")
             if info['type'] == 'file':
                 headers = {
                     "ETag": info.get("ETag"),
@@ -94,7 +90,7 @@ class FSSpecProxyClient(ProxyClient):
                 return Response(headers=headers)
             elif info['type'] == 'directory':
                 # S3 does not support HEAD for directories
-                return Response(status_code=404)
+                return get_nosuchkey_response(key)
             else:
                 logger.error(f"Unknown object type {info['type']} for {path}")
                 return Response(status_code=500)
@@ -169,9 +165,9 @@ class FSSpecProxyClient(ProxyClient):
                 if path['type'] == 'directory':
                     key = dir_path(key)
 
-                #logger.info(f"continued:{continued}")
+                # Try to emulate pagination using fsspec, but it's very inefficient
+                # since it doesn't have a way to start at a given marker/file.
                 if continuation_token and not continued:
-                    #logger.info(f"{key}=={continuation_token}")
                     if key==continuation_token:
                         continued = True
                     continue

@@ -7,7 +7,7 @@ import boto3
 import botocore
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 from fastapi import HTTPException
-from fastapi.responses import Response, StreamingResponse, HTMLResponse, JSONResponse
+from fastapi.responses import Response, StreamingResponse, JSONResponse
 
 from jproxy.utils import *
 from jproxy.client import ProxyClient
@@ -15,23 +15,6 @@ from jproxy.settings import S3LikeTarget
 
 # For debugging AWS API calls
 #boto3.set_stream_logger(name='botocore')
-
-def handle_s3_exception(e):
-    """ Handle various cases of generic errors from the boto AWS API.
-    """
-    if isinstance(e, (NoCredentialsError, PartialCredentialsError)):
-        logger.opt(exception=sys.exc_info()).info("AWS credentials not configured properly")
-        raise HTTPException(status_code=500, detail="AWS credentials not configured properly")
-    elif isinstance(e, botocore.exceptions.ReadTimeoutError):
-        raise HTTPException(status_code=408, detail="Upstream endpoint timed out")
-    elif isinstance(e, botocore.exceptions.ClientError):
-        logger.opt(exception=sys.exc_info()).info("Error using boto S3 API")
-        code = e.response['ResponseMetadata']['HTTPStatusCode']
-        raise HTTPException(status_code=code, detail="Error communicating with AWS S3")
-    else:
-        logger.opt(exception=sys.exc_info()).info("Error using boto S3 API")
-        raise HTTPException(status_code=500, detail="Error communicating with AWS S3")
-
 
 def get_nosuchkey_response(key):
     return Response(content=f"""
@@ -44,7 +27,28 @@ def get_nosuchkey_response(key):
         """, status_code=404, media_type="application/xml")
 
 
-class S3ProxyClient(ProxyClient):
+def handle_s3_exception(e, key=None):
+    """ Handle various cases of generic errors from the boto AWS API.
+    """
+    if isinstance(e, (NoCredentialsError, PartialCredentialsError)):
+        logger.opt(exception=sys.exc_info()).error("AWS credentials not configured properly")
+        return JSONResponse({"error":"AWS credentials not configured properly"}, status_code=408)
+    elif isinstance(e, botocore.exceptions.ReadTimeoutError):
+        return JSONResponse({"error":"Upstream endpoint timed out"}, status_code=408)
+    elif isinstance(e, botocore.exceptions.ClientError):
+        code = e.response['ResponseMetadata']['HTTPStatusCode']
+        if int(code) == 404 and key:
+            return get_nosuchkey_response(key)
+        else:
+            logger.opt(exception=sys.exc_info()).error("Error using boto S3 API")
+            return JSONResponse({"error":"Error communicating with AWS S3"}, status_code=code)
+    else:
+        logger.opt(exception=sys.exc_info()).error("Error communicating with AWS S3")
+        return JSONResponse({"error":"Error communicating with AWS S3"}, status_code=500)
+
+
+
+class Boto3ProxyClient(ProxyClient):
 
     def __init__(self, config: S3LikeTarget):
 
@@ -96,7 +100,7 @@ class S3ProxyClient(ProxyClient):
         except self.client.exceptions.NoSuchKey:
             return get_nosuchkey_response(key)
         except Exception as e:
-            handle_s3_exception(e)
+            return handle_s3_exception(e, key)
 
 
     @override
@@ -113,7 +117,7 @@ class S3ProxyClient(ProxyClient):
         except self.client.exceptions.NoSuchKey:
             return get_nosuchkey_response(key)
         except Exception as e:
-            handle_s3_exception(e)
+            return handle_s3_exception(e, key)
 
 
     @override
@@ -163,8 +167,6 @@ class S3ProxyClient(ProxyClient):
             add_telem(root, "ContinuationToken", continuation_token)
             add_telem(root, "NextContinuationToken", next_token)
             add_telem(root, "ContinuationToken", continuation_token)
-            #add_telem(root, "Marker", marker)
-            #add_telem(root, "NextMarker", next_token) # a little hack
             add_telem(root, "StartAfter", start_after)
 
             common_prefixes = add_elem(root, "CommonPrefixes")
@@ -190,4 +192,4 @@ class S3ProxyClient(ProxyClient):
             return Response(content=xml_output, media_type="application/xml")
 
         except Exception as e:
-            handle_s3_exception(e)
+            return handle_s3_exception(e, key=prefix)

@@ -14,7 +14,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from jproxy.utils import dir_path, remove_prefix, parse_xml
 from jproxy.settings import get_settings, S3LikeTarget
-from jproxy.proxy_fsspec import FSSpecProxyClient
+#from jproxy.proxy_fsspec import FSSpecProxyClient
+from jproxy.proxy_boto3 import Boto3ProxyClient
 
 app = FastAPI()
 app.add_middleware(
@@ -48,7 +49,7 @@ async def startup_event():
         target_config = app.settings.get_target_config(target_name)
 
         if isinstance(target_config, S3LikeTarget):
-            client = FSSpecProxyClient(target_config)
+            client = Boto3ProxyClient(target_config)
         else:
             raise RuntimeError(f"Unknown target type: {type(target_config)}")
 
@@ -158,7 +159,7 @@ async def target_dispatcher(request: Request,
         return await browse_bucket(request, target_name, path, max_keys)
     else:
         return await client.get_object(path)
-    
+
 
 
 @app.head("/{target_name}/{key:path}")
@@ -178,7 +179,7 @@ async def head_object(request: Request, target_name: str, key: str):
         return await client.head_object(key)
     except:
         logger.opt(exception=sys.exc_info()).info("Error requesting head")
-        raise HTTPException(status_code=500, detail="Error requesting head")
+        return JSONResponse({"error":"Error requesting HEAD"}, status_code=500)
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -188,12 +189,13 @@ async def read_root(request: Request):
         return templates.TemplateResponse("index.html", {"request": request, "links": bucket_list})
     except:
         logger.opt(exception=sys.exc_info()).info("Error building index")
-        raise HTTPException(status_code=500, detail="Error building index")
+        return JSONResponse({"error":"Error building index"}, status_code=500)
 
 
 @app.get('/favicon.ico', include_in_schema=False)
 async def favicon():
     return FileResponse('static/favicon.ico')
+
 
 if __name__ == "__main__":
     import uvicorn
