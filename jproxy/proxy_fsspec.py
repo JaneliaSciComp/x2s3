@@ -17,8 +17,10 @@ def handle_s3_exception(e):
     """
     if isinstance(e, FSTimeoutError):
         return JSONResponse({"error":"Upstream endpoint timed out"}, status_code=408)
+    elif isinstance(e, FileNotFoundError):
+        return JSONResponse({"error":"Upstream resource not found"}, status_code=404)
     else:
-        logger.opt(exception=sys.exc_info()).info("Error using fsspec S3 API")
+        logger.opt(exception=sys.exc_info()).error("Error using fsspec S3 API")
         return JSONResponse({"error":"Error communicating with AWS S3"}, status_code=500)
 
 

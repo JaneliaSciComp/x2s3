@@ -92,6 +92,11 @@ async def browse_bucket(request: Request,
 
     parent_prefix = dir_path(os.path.dirname(prefix.rstrip('/')))
     response = await client.list_objects_v2(None, '/', None, False, max_keys, prefix, None)
+    
+    if response.status_code != 200:
+        # Return error respone
+        return response
+
     xml = response.body.decode("utf-8")
     root = parse_xml(xml)
 
