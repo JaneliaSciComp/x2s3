@@ -75,10 +75,10 @@ class S3Stream(StreamingResponse):
                 result = await client.get_object(Bucket=self.bucket, Key=self.key)
 
                 await send({
-                            "type": "http.response.start",
-                            "status": self.status_code,
-                            "headers": self.raw_headers,
-                        })
+                    "type": "http.response.start",
+                    "status": self.status_code,
+                    "headers": self.raw_headers,
+                })
 
                 async for chunk in result["Body"]:
 
@@ -108,7 +108,6 @@ class S3Stream(StreamingResponse):
                     "body": r.body,
                     "more_body": False,
                 })
-
 
 
 class AiobotoProxyClient(ProxyClient):
