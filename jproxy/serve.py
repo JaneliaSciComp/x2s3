@@ -15,7 +15,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from jproxy.utils import dir_path, remove_prefix, parse_xml
 from jproxy.settings import get_settings, S3LikeTarget
 #from jproxy.proxy_fsspec import FSSpecProxyClient
-from jproxy.proxy_boto3 import Boto3ProxyClient
+#from jproxy.proxy_boto3 import Boto3ProxyClient
+from jproxy.proxy_aioboto import AiobotoProxyClient
 
 app = FastAPI()
 app.add_middleware(
@@ -28,9 +29,11 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request, exc):
     return JSONResponse({"error":str(exc.detail)}, status_code=exc.status_code)
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
@@ -49,7 +52,7 @@ async def startup_event():
         target_config = app.settings.get_target_config(target_name)
 
         if isinstance(target_config, S3LikeTarget):
-            client = Boto3ProxyClient(target_config)
+            client = AiobotoProxyClient(target_config)
         else:
             raise RuntimeError(f"Unknown target type: {type(target_config)}")
 
@@ -93,7 +96,7 @@ async def browse_bucket(request: Request,
 
     parent_prefix = dir_path(os.path.dirname(prefix.rstrip('/')))
     response = await client.list_objects_v2(None, '/', None, False, max_keys, prefix, None)
-    
+
     if response.status_code != 200:
         # Return error respone
         return response
