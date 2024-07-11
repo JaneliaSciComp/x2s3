@@ -1,8 +1,9 @@
 import os
 import sys
+import inspect
 import typing
 from typing_extensions import override
-import inspect
+
 from loguru import logger
 from starlette.background import BackgroundTask
 import botocore
@@ -15,8 +16,6 @@ from jproxy.utils import *
 from jproxy.client import ProxyClient
 from jproxy.settings import S3LikeTarget
 
-# For debugging AWS API calls
-#boto3.set_stream_logger(name='botocore')
 
 def get_nosuchkey_response(key):
     return Response(content=inspect.cleandoc(f"""
@@ -53,6 +52,8 @@ def handle_s3_exception(e, key=None):
 
 # Adapted from https://stackoverflow.com/questions/69617252/response-file-stream-from-s3-fastapi
 class S3Stream(StreamingResponse):
+    """ 
+    """
     def __init__(
             self,
             client_creator: typing.Callable,
