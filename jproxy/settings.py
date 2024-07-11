@@ -12,6 +12,7 @@ from pydantic_settings import (
 
 class Target(BaseModel):
     name: str
+    hidden: bool = False
 
 
 class Credentials(BaseModel):
@@ -55,7 +56,7 @@ class Settings(BaseSettings):
 
 
     def get_targets(self):
-        return self.target_map.keys()
+        return [k for k in self.target_map if not self.target_map[k].hidden]
 
 
     def get_target_config(self, name):
