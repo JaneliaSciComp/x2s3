@@ -1,0 +1,12 @@
+name: jproxy
+services:
+
+    webapp:
+        image: ghcr.io/janeliascicomp/jproxy:latest
+        ports:
+          - 443
+        restart: unless-stopped
+        volumes:
+          - ${CONFIG_FILE}:/app/jproxy/config.yaml
+          - ${CERT_FILE}:/certs/default.crt
+          - ${KEY_FILE}:/certs/default.key
