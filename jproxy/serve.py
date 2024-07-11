@@ -107,8 +107,13 @@ async def browse_bucket(request: Request,
     cps = root.find('CommonPrefixes')
     common_prefixes = [dir_path(e.text) for e in cps.iter('Prefix')] if cps else []
 
-    cs = root.find('Contents')
-    contents = [{"key": e.text} for e in cs.iter('Key') if e.text != prefix] if cs else []
+    contents = []
+    cs =[c for c in root.findall('Contents')]
+    if cs:
+        for c in cs:
+            key_elem = c.find('Key')
+            if key_elem is not None and key_elem.text != prefix:
+                contents.append({"key": key_elem.text})
 
     return templates.TemplateResponse("browse.html", {
         "request": request,

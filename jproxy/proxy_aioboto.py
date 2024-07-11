@@ -242,6 +242,7 @@ class AiobotoProxyClient(ProxyClient):
                     add_telem(contents, "ETag", obj["ETag"])
                     add_telem(contents, "Size", obj["Size"])
                     add_telem(contents, "StorageClass", obj.get("StorageClass", ""))
+                    
                     if "Owner" in obj:
                         display_name = obj["Owner"]["DisplayName"] if "DisplayName" in obj["Owner"] else ''
                         owner_id = obj["Owner"]["ID"] if "ID" in obj["Owner"] else ''
