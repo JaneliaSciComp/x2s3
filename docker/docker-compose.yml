@@ -2,7 +2,7 @@ name: jproxy
 services:
 
     webapp:
-        image: ghcr.io/janeliascicomp/jproxy:latest
+        image: ghcr.io/janeliascicomp/jproxy:0.1.0
         ports:
           - 443:8000
         restart: unless-stopped
