@@ -211,7 +211,6 @@ class AiobotoProxyClient(ProxyClient):
                     "Prefix": prefix,
                     "StartAfter": start_after
                 }
-                logger.info(params)
                 # Remove any None values because boto3 doesn't like those
                 params = {k: v for k, v in params.items() if v is not None}
 
