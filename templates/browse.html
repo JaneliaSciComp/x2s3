@@ -31,6 +31,13 @@
         <tr><td><a href="/{{ target }}/{{ obj.key }}">{{ remove_prefix(prefix, obj.key) }}</a></td><td>{{ obj.size }}</td><td>{{ obj.lastmod }}</td></tr>
         {% endfor %}
     </tbody>
+    </table>
+
+    {% if continuation_token %}
+    <p>
+        <a href="?continuation-token={{ continuation_token }}">More</a>
+    </p>
+    {% endif %}
 
 </body>
 </html>

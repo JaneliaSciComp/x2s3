@@ -211,15 +211,17 @@ class AiobotoProxyClient(ProxyClient):
                     "Prefix": prefix,
                     "StartAfter": start_after
                 }
+                logger.info(params)
                 # Remove any None values because boto3 doesn't like those
                 params = {k: v for k, v in params.items() if v is not None}
 
                 response = await client.list_objects_v2(**params)
                 res_prefix = remove_prefix(self.prefix, prefix)
                 next_token = remove_prefix(self.prefix, response.get("NextContinuationToken", ""))
+                truncated = "true" if response.get("IsTruncated", False) else "false"
 
                 root = ET.Element("ListBucketResult")
-                add_telem(root, "IsTruncated", response.get("IsTruncated", False))
+                add_telem(root, "IsTruncated", truncated)
                 add_telem(root, "Name", self.target_name)
                 add_telem(root, "Prefix", res_prefix)
                 add_telem(root, "Delimiter", delimiter)

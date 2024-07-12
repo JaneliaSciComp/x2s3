@@ -85,6 +85,7 @@ def get_read_access_acl():
 async def browse_bucket(request: Request,
                         target_name: str,
                         prefix: str,
+                        continuation_token: str = None,
                         max_keys: int = 10):
 
     target_config = app.settings.get_target_config(target_name)
@@ -95,7 +96,8 @@ async def browse_bucket(request: Request,
     bucket_name = target_config.bucket
 
     parent_prefix = dir_path(os.path.dirname(prefix.rstrip('/')))
-    response = await client.list_objects_v2(None, '/', None, False, max_keys, prefix, None)
+    response = await client.list_objects_v2(continuation_token, '/', None,
+                                            False, max_keys, prefix, None)
 
     if response.status_code != 200:
         # Return error respone
@@ -127,6 +129,11 @@ async def browse_bucket(request: Request,
 
                 contents.append(content)
 
+    next_token = None
+    truncated_elem = root.find('IsTruncated')
+    if truncated_elem is not None and truncated_elem.text=='true':
+        next_ct_elem = root.find('NextContinuationToken')
+        next_token = next_ct_elem.text
 
     return templates.TemplateResponse("browse.html", {
         "request": request,
@@ -136,7 +143,8 @@ async def browse_bucket(request: Request,
         "common_prefixes": common_prefixes,
         "contents": contents,
         "parent_prefix": parent_prefix,
-        "remove_prefix": remove_prefix
+        "remove_prefix": remove_prefix,
+        "continuation_token": next_token
     })
 
 
@@ -161,12 +169,6 @@ async def target_dispatcher(request: Request,
     if acl is not None:
         return get_read_access_acl()
 
-    if delimiter != '/':
-        raise HTTPException(status_code=501, detail="Only the / Delimiter is implemented")
-
-    if start_after:
-        raise HTTPException(status_code=501, detail="StartAfter is not currently implemented")
-
     client = app.clients[target_name]
 
     if list_type:
@@ -177,7 +179,7 @@ async def target_dispatcher(request: Request,
             raise HTTPException(status_code=400, detail="Invalid list type")
 
     if not path or path.endswith("/"):
-        return await browse_bucket(request, target_name, path, max_keys)
+        return await browse_bucket(request, target_name, path, continuation_token, 100)
     else:
         return await client.get_object(path)
 
