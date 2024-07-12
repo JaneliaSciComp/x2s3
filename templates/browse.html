@@ -10,17 +10,27 @@
     <a href="/"><img src="{{ url_for('static', path='/favicon-32x32.png') }}" alt="JProxy Logo"></a>
     
     <h2>{{ request.url.scheme }}://{{ request.url.hostname }}{% if request.url.port %}:{{ request.url.port }}{% endif %}{{ request.url.path }}</h2>
-    <ul>
+    <table style="width:100%">
+    <thead>
+        <tr>
+            <td>Name</td>
+            <td>Size</td>
+            <td>Last Modified</td>
+        </tr>
+    </thead>
+    <tbody>
         {% if prefix %}
-        <li><a href="/{{ target }}/{{ parent_prefix }}">..</a></li>
+        <tr><td><a href="/{{ target }}/{{ parent_prefix }}">..</a></td><td></td><td></td></tr>
+        {% else %}
+        <tr><td><a href="/">..</a></td><td></td><td></td></tr>
         {% endif %}
         {% for common_prefix in common_prefixes %}
-            <li><a href="/{{ target }}/{{ common_prefix }}">{{ remove_prefix(prefix, common_prefix) }}</a></li>
+        <tr><td><a href="/{{ target }}/{{ common_prefix }}">{{ remove_prefix(prefix, common_prefix) }}</a></td><td></td><td></td></tr>
         {% endfor %}
         {% for obj in contents %}
-            <li><a href="/{{ target }}/{{ obj.key }}">{{ remove_prefix(prefix, obj.key) }}</a></li>
+        <tr><td><a href="/{{ target }}/{{ obj.key }}">{{ remove_prefix(prefix, obj.key) }}</a></td><td>{{ obj.size }}</td><td>{{ obj.lastmod }}</td></tr>
         {% endfor %}
-    </ul>
+    </tbody>
 
 </body>
 </html>

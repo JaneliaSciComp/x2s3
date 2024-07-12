@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from jproxy.utils import dir_path, remove_prefix, parse_xml
+from jproxy.utils import dir_path, remove_prefix, parse_xml, humanize_bytes
 from jproxy.settings import get_settings, S3LikeTarget
 #from jproxy.proxy_fsspec import FSSpecProxyClient
 #from jproxy.proxy_boto3 import Boto3ProxyClient
@@ -113,7 +113,20 @@ async def browse_bucket(request: Request,
         for c in cs:
             key_elem = c.find('Key')
             if key_elem is not None and key_elem.text != prefix:
-                contents.append({"key": key_elem.text})
+
+                content = {'key': key_elem.text}
+
+                size_elem = c.find('Size')
+                if size_elem is not None and size_elem.text:
+                    num_bytes = int(size_elem.text)
+                    content['size'] = humanize_bytes(num_bytes)
+
+                lm_elem = c.find('LastModified')
+                if lm_elem is not None and lm_elem.text:
+                    content['lastmod'] = lm_elem.text
+
+                contents.append(content)
+
 
     return templates.TemplateResponse("browse.html", {
         "request": request,
