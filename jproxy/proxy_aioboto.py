@@ -52,7 +52,7 @@ def handle_s3_exception(e, key=None):
 
 # Adapted from https://stackoverflow.com/questions/69617252/response-file-stream-from-s3-fastapi
 class S3Stream(StreamingResponse):
-    """ 
+    """ Stream the result of GetObject.
     """
     def __init__(
             self,
@@ -198,7 +198,7 @@ class AiobotoProxyClient(ProxyClient):
         # ensure the prefix ends with a slash
         if prefix and not prefix.endswith('/'):
             prefix += '/'
-        
+
         async with self.get_client_creator() as client:
             try:
                 params = {
@@ -243,7 +243,7 @@ class AiobotoProxyClient(ProxyClient):
                     add_telem(contents, "ETag", obj["ETag"])
                     add_telem(contents, "Size", obj["Size"])
                     add_telem(contents, "StorageClass", obj.get("StorageClass", ""))
-                    
+
                     if "Owner" in obj:
                         display_name = obj["Owner"]["DisplayName"] if "DisplayName" in obj["Owner"] else ''
                         owner_id = obj["Owner"]["ID"] if "ID" in obj["Owner"] else ''

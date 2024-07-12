@@ -1,8 +1,10 @@
 import xml.etree.ElementTree as ET
 
-def remove_prefix(client_prefix, key):
-    if key and client_prefix:
-        return key.removeprefix(client_prefix).removeprefix('/')
+def remove_prefix(prefix, key):
+    """ Remove prefix from the key, and then the leading slash.
+    """
+    if key and prefix:
+        return key.removeprefix(prefix).removeprefix('/')
     return key
 
 
@@ -31,10 +33,14 @@ def add_telem(parent, key, value):
 
 
 def elem_to_str(elem):
+    """ Render the given XML element to a string.
+    """
     return ET.tostring(elem, encoding="utf-8", xml_declaration=True)
 
 
 def parse_xml(xml):
+    """ Parse the given XML string into an XML element.
+    """
     return ET.fromstring(xml)
 
 
