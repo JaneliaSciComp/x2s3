@@ -43,6 +43,40 @@ Create a virtualenv and install the dependencies:
 uvicorn jproxy.serve:app --host 0.0.0.0 --port 8000 --workers 1 --access-log --ssl-keyfile /opt/tls/cert.key --ssl-certfile /opt/tls/cert.crt --reload
 ```
 
+# Release
+
+## Build Docker container
+
+```bash
+docker build . --no-cache -t ghcr.io/janeliascicomp/jproxy:latest
+```
+
+## Push Docker container
+
+```bash
+docker push ghcr.io/janeliascicomp/jproxy:latest
+```
+
+## Run Docker container
+
+First you'll need a `config.yaml` as described above.
+
+Create a `.env` file that looks like this:
+
+```bash
+CONFIG_FILE=/path/to/config.yaml
+VAR_DIR=/path/to/var
+CERT_FILE=/path/to/cert.crt
+KEY_FILE=/path/to/cert.key
+```
+
+Now you can bring up the container:
+
+```bash
+docker compose up -d
+```
+
+
 # Attributions
 
 Proxy icons created by <a href="https://www.flaticon.com/free-icons/proxy" title="proxy icons">Uniconlabs - Flaticon</a>
