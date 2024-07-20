@@ -1,6 +1,4 @@
-name: jproxy
 services:
-
     webapp:
         image: ghcr.io/janeliascicomp/jproxy:0.1.0
         ports:
