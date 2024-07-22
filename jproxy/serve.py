@@ -23,7 +23,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["GET","HEAD"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type"],
 )
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
