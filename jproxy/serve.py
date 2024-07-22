@@ -4,11 +4,10 @@ from typing import Optional
 
 from loguru import logger
 from fastapi import FastAPI, HTTPException, Request, Query
-from fastapi.responses import Response, HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import Response, HTMLResponse, JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
-
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -218,6 +217,11 @@ async def read_root(request: Request):
 @app.get('/favicon.ico', include_in_schema=False)
 async def favicon():
     return FileResponse('static/favicon.ico')
+
+
+@app.get('/robots.txt', response_class=PlainTextResponse)
+def robots():
+    return """User-agent: *\nDisallow: /"""
 
 
 if __name__ == "__main__":
