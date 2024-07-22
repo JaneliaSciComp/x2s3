@@ -1,11 +1,23 @@
 services:
-    webapp:
-        image: ghcr.io/janeliascicomp/jproxy:0.1.0
-        ports:
-          - 443:8000
-        restart: unless-stopped
-        volumes:
-          - ${CONFIG_FILE}:/app/jproxy/config.yaml
-          - ${VAR_DIR}:/app/jproxy/var
-          - ${CERT_FILE}:/certs/default.crt
-          - ${KEY_FILE}:/certs/default.key
+
+  nginx:
+    image: nginx
+    container_name: jproxy_nginx
+    restart: unless-stopped
+    depends_on:
+      - jproxy
+    ports:
+      - 443:443
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${CERT_FILE}:/certs/default.crt:ro
+      - ${KEY_FILE}:/certs/default.key:ro
+
+  jproxy:
+    image: ghcr.io/janeliascicomp/jproxy:0.2.0
+    restart: unless-stopped
+    ports:
+      - 8000
+    volumes:
+      - ${CONFIG_FILE}:/app/jproxy/config.yaml
+      - ${VAR_DIR}:/app/jproxy/var
