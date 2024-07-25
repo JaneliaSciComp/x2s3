@@ -39,6 +39,7 @@ class Settings(BaseSettings):
         be passed in the environment or in a .env file. 
     """
 
+    base_url: HttpUrl = 'http://127.0.0.1:8000/'
     targets: List[Union[S3LikeTarget, LocalTarget]] = []
     target_map: Dict[str, Target] = {}
 

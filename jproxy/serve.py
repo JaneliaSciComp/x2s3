@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from pydantic import HttpUrl
 
 from jproxy.utils import dir_path, remove_prefix, parse_xml, humanize_bytes
 from jproxy.settings import get_settings, S3LikeTarget
@@ -85,8 +86,9 @@ async def browse_bucket(request: Request,
                         target_name: str,
                         prefix: str,
                         continuation_token: str = None,
-                        max_keys: int = 10):
-
+                        max_keys: int = 10,
+                        is_virtual: bool = False):
+    
     target_config = app.settings.get_target_config(target_name)
     if not target_config:
         raise HTTPException(status_code=404, detail="Target bucket not found")
@@ -134,11 +136,15 @@ async def browse_bucket(request: Request,
         next_ct_elem = root.find('NextContinuationToken')
         next_token = next_ct_elem.text
 
+    target_prefix = ''
+    if not is_virtual:
+        target_prefix = '/'+target_name
+
     return templates.TemplateResponse("browse.html", {
         "request": request,
         "bucket_name": bucket_name,
         "prefix": prefix,
-        "target": target_name,
+        "target_prefix": target_prefix,
         "common_prefixes": common_prefixes,
         "contents": contents,
         "parent_prefix": parent_prefix,
@@ -147,9 +153,42 @@ async def browse_bucket(request: Request,
     })
 
 
-@app.get("/{target_name}/{path:path}")
+
+@app.get('/favicon.ico', include_in_schema=False)
+async def favicon():
+    return FileResponse('static/favicon.ico')
+
+
+@app.get('/robots.txt', response_class=PlainTextResponse)
+def robots():
+    return """User-agent: *\nDisallow: /"""
+
+
+def get_target(request, path):
+    target_path = path
+    base_url = app.settings.base_url
+    subdomain = request.url.hostname.removesuffix(base_url.host).removesuffix('.')
+    if subdomain:
+        # Target is given in the subdomain
+        is_virtual_host = True
+        target_name = subdomain
+    else:
+        # Target is encoded as the first element in the path
+        is_virtual_host = False
+        # Extract target from path
+        ts = target_path.split('/', maxsplit=1)
+        if len(ts)==2:
+            target_name, target_path = ts
+        elif len(ts)==1:
+            target_name, target_path = ts[0], ''
+        else:
+            target_name, target_path = None, ''
+
+    return target_name, target_path, is_virtual_host
+
+
+@app.get("/{path:path}")
 async def target_dispatcher(request: Request,
-                            target_name: str,
                             path: str,
                             acl: str = Query(None),
                             list_type: int = Query(None, alias="list-type"),
@@ -160,6 +199,12 @@ async def target_dispatcher(request: Request,
                             max_keys: Optional[int] = Query(1000, alias="max-keys"),
                             prefix: Optional[str] = Query(None, alias="prefix"),
                             start_after: Optional[str] = Query(None, alias="start-after")):
+
+    target_name, target_path, is_virtual = get_target(request, path)
+    if not target_name:
+        # Return target index
+        bucket_list = { target: f"/{target}/" for target in app.settings.get_targets()}
+        return templates.TemplateResponse("index.html", {"request": request, "links": bucket_list})
 
     target_config = app.settings.get_target_config(target_name)
     if not target_config:
@@ -177,15 +222,22 @@ async def target_dispatcher(request: Request,
         else:
             raise HTTPException(status_code=400, detail="Invalid list type")
 
-    if not path or path.endswith("/"):
-        return await browse_bucket(request, target_name, path, continuation_token, 100)
+    if not target_path or target_path.endswith("/"):
+        return await browse_bucket(request, target_name, target_path,
+            continuation_token=continuation_token,
+            max_keys=100,
+            is_virtual=is_virtual)
     else:
-        return await client.get_object(path)
+        return await client.get_object(target_path)
 
 
 
-@app.head("/{target_name}/{key:path}")
-async def head_object(request: Request, target_name: str, key: str):
+@app.head("{path:path}")
+async def head_object(request: Request, path: str):
+
+    target_name, target_path, _ = get_target(request, path)
+    if not target_name:
+        raise HTTPException(status_code=404, detail="Target bucket not found")
 
     try:
         target_config = app.settings.get_target_config(target_name)
@@ -195,6 +247,7 @@ async def head_object(request: Request, target_name: str, key: str):
         client = app.clients[target_name]
         client_prefix = target_config.prefix
 
+        key = target_path
         if client_prefix:
             key = os.path.join(client_prefix, key) if key else client_prefix
 
@@ -202,26 +255,6 @@ async def head_object(request: Request, target_name: str, key: str):
     except:
         logger.opt(exception=sys.exc_info()).info("Error requesting head")
         return JSONResponse({"error":"Error requesting HEAD"}, status_code=500)
-
-
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
-async def read_root(request: Request):
-    try:
-        bucket_list = { target: f"/{target}/" for target in app.settings.get_targets()}
-        return templates.TemplateResponse("index.html", {"request": request, "links": bucket_list})
-    except:
-        logger.opt(exception=sys.exc_info()).info("Error building index")
-        return JSONResponse({"error":"Error building index"}, status_code=500)
-
-
-@app.get('/favicon.ico', include_in_schema=False)
-async def favicon():
-    return FileResponse('static/favicon.ico')
-
-
-@app.get('/robots.txt', response_class=PlainTextResponse)
-def robots():
-    return """User-agent: *\nDisallow: /"""
 
 
 if __name__ == "__main__":

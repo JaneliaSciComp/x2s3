@@ -21,15 +21,15 @@
     </thead>
     <tbody>
         {% if prefix %}
-        <tr><td><a href="/{{ target }}/{{ parent_prefix }}">..</a></td><td></td><td></td></tr>
+        <tr><td><a href="{{ target_prefix }}/{{ parent_prefix }}">..</a></td><td></td><td></td></tr>
         {% else %}
         <tr><td><a href="/">..</a></td><td></td><td></td></tr>
         {% endif %}
         {% for common_prefix in common_prefixes %}
-        <tr><td><a href="/{{ target }}/{{ common_prefix }}">{{ remove_prefix(prefix, common_prefix) }}</a></td><td></td><td></td></tr>
+        <tr><td><a href="{{ target_prefix }}/{{ common_prefix }}">{{ remove_prefix(prefix, common_prefix) }}</a></td><td></td><td></td></tr>
         {% endfor %}
         {% for obj in contents %}
-        <tr><td><a href="/{{ target }}/{{ obj.key }}">{{ remove_prefix(prefix, obj.key) }}</a></td><td>{{ obj.size }}</td><td>{{ obj.lastmod }}</td></tr>
+        <tr><td><a href="{{ target_prefix }}/{{ obj.key }}">{{ remove_prefix(prefix, obj.key) }}</a></td><td>{{ obj.size }}</td><td>{{ obj.lastmod }}</td></tr>
         {% endfor %}
     </tbody>
     </table>
