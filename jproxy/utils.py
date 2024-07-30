@@ -1,4 +1,7 @@
+import inspect
 import xml.etree.ElementTree as ET
+
+from fastapi.responses import Response
 
 def remove_prefix(prefix, key):
     """ Remove prefix from the key, and then the leading slash.
@@ -51,3 +54,34 @@ def humanize_bytes(num, suffix="B"):
             return f"{num:3.1f} {unit}{suffix}"
         num /= 1024.0
     return f"{num:.1f} Yi{suffix}"
+
+
+def get_nosuchkey_response(key):
+    return Response(content=inspect.cleandoc(f"""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Error>
+            <Code>NoSuchKey</Code>
+            <Message>The specified key does not exist.</Message>
+            <Key>{key}</Key>
+        </Error>
+        """), status_code=404, media_type="application/xml")
+
+
+def get_nosuchbucket_response(bucket_name):
+    return Response(content=inspect.cleandoc(f"""
+    <?xml version="1.0" encoding="UTF-8"?>
+    <Error>
+        <Code>NoSuchBucket</Code>
+        <Message>The specified bucket does not exist</Message>
+        <BucketName>{bucket_name}</BucketName>
+    </Error>
+    """), status_code=404, media_type="application/xml")
+
+def get_accessdenied_response():
+    return Response(content=inspect.cleandoc("""
+    <?xml version="1.0" encoding="UTF-8"?>
+    <Error>
+        <Code>AccessDenied</Code>
+        <Message>Access Denied</Message>
+    </Error>
+    """), status_code=403, media_type="application/xml")

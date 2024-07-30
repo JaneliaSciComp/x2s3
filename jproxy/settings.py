@@ -53,7 +53,7 @@ class Settings(BaseSettings):
 
     def __init__(self, **data) -> None:
         super().__init__(**data)
-        self.target_map = {t.name: t for t in self.targets}
+        self.target_map = {t.name.lower(): t for t in self.targets}
 
 
     def get_targets(self):
@@ -61,8 +61,10 @@ class Settings(BaseSettings):
 
 
     def get_target_config(self, name):
-        if name in self.target_map:
-            return self.target_map[name]
+        if name:
+            key = name.lower()
+            if key in self.target_map:
+                return self.target_map[key]
         return None
 
         

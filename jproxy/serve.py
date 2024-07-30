@@ -12,11 +12,12 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import HttpUrl
 
-from jproxy.utils import dir_path, remove_prefix, parse_xml, humanize_bytes
+from jproxy.utils import *
 from jproxy.settings import get_settings, S3LikeTarget
 #from jproxy.proxy_fsspec import FSSpecProxyClient
 #from jproxy.proxy_boto3 import Boto3ProxyClient
 from jproxy.proxy_aioboto import AiobotoProxyClient
+
 
 app = FastAPI()
 app.add_middleware(
@@ -49,15 +50,23 @@ async def startup_event():
     app.clients = {}
 
     for target_name in app.settings.get_targets():
-        target_config = app.settings.get_target_config(target_name)
+        target_key = target_name.lower()
+        target_config = app.settings.get_target_config(target_key)
 
         if isinstance(target_config, S3LikeTarget):
             client = AiobotoProxyClient(target_config)
         else:
             raise RuntimeError(f"Unknown target type: {type(target_config)}")
 
-        app.clients[target_name] = client
+        app.clients[target_key] = client
         logger.info(f"Configured target {target_name}")
+
+
+def get_client(target_name):
+    target_key = target_name.lower()
+    if target_key in app.clients:
+        return app.clients[target_key]
+    return None
 
 
 def get_read_access_acl():
@@ -82,6 +91,34 @@ def get_read_access_acl():
     return Response(content=acl_xml, media_type="application/xml")
 
 
+def get_target(request, path):
+    target_path = path
+    base_url = app.settings.base_url
+    subdomain = request.url.hostname.removesuffix(base_url.host).removesuffix('.')
+    logger.trace(f"subdomain: {subdomain}")
+    if subdomain:
+        # Target is given in the subdomain
+        is_virtual = True
+        target_name = subdomain.split('.')[0]
+    else:
+        # Target is encoded as the first element in the path
+        is_virtual = False
+        # Extract target from path
+        ts = target_path.removeprefix('/').split('/', maxsplit=1)
+        logger.trace(f"target path components: {ts}")
+        if len(ts)==2:
+            target_name, target_path = ts
+        elif len(ts)==1:
+            # This happens if we are at the root of the proxy
+            target_name, target_path = ts[0], ''
+        else:
+            # This shouldn't happen
+            target_name, target_path = None, ''
+
+    logger.trace(f"target_name={target_name}, target_path={target_path}, is_virtual={is_virtual}")
+    return target_name, target_path, is_virtual
+
+
 async def browse_bucket(request: Request,
                         target_name: str,
                         prefix: str,
@@ -93,7 +130,7 @@ async def browse_bucket(request: Request,
     if not target_config:
         raise HTTPException(status_code=404, detail="Target bucket not found")
 
-    client = app.clients[target_name]
+    client = get_client(target_name)
     bucket_name = target_config.bucket
 
     parent_prefix = dir_path(os.path.dirname(prefix.rstrip('/')))
@@ -164,29 +201,6 @@ def robots():
     return """User-agent: *\nDisallow: /"""
 
 
-def get_target(request, path):
-    target_path = path
-    base_url = app.settings.base_url
-    subdomain = request.url.hostname.removesuffix(base_url.host).removesuffix('.')
-    if subdomain:
-        # Target is given in the subdomain
-        is_virtual_host = True
-        target_name = subdomain
-    else:
-        # Target is encoded as the first element in the path
-        is_virtual_host = False
-        # Extract target from path
-        ts = target_path.split('/', maxsplit=1)
-        if len(ts)==2:
-            target_name, target_path = ts
-        elif len(ts)==1:
-            target_name, target_path = ts[0], ''
-        else:
-            target_name, target_path = None, ''
-
-    return target_name, target_path, is_virtual_host
-
-
 @app.get("/{path:path}")
 async def target_dispatcher(request: Request,
                             path: str,
@@ -208,19 +222,22 @@ async def target_dispatcher(request: Request,
 
     target_config = app.settings.get_target_config(target_name)
     if not target_config:
-        raise HTTPException(status_code=404, detail="Target bucket not found")
+        return get_nosuchbucket_response(target_name)
+
+    client = get_client(target_name)
 
     if acl is not None:
         return get_read_access_acl()
 
-    client = app.clients[target_name]
-
     if list_type:
-        if list_type == 2:
-            return await client.list_objects_v2(continuation_token, delimiter, \
-                encoding_type, fetch_owner, max_keys, prefix, start_after)
+        if not target_path:
+            if list_type == 2:
+                return await client.list_objects_v2(continuation_token, delimiter, \
+                    encoding_type, fetch_owner, max_keys, prefix, start_after)
+            else:
+                raise HTTPException(status_code=400, detail="Invalid list type")
         else:
-            raise HTTPException(status_code=400, detail="Invalid list type")
+            return await client.get_object(target_path)
 
     if not target_path or target_path.endswith("/"):
         return await browse_bucket(request, target_name, target_path,
@@ -237,14 +254,14 @@ async def head_object(request: Request, path: str):
 
     target_name, target_path, _ = get_target(request, path)
     if not target_name:
-        raise HTTPException(status_code=404, detail="Target bucket not found")
+        return get_nosuchbucket_response('')
 
     try:
         target_config = app.settings.get_target_config(target_name)
         if not target_config:
-            raise HTTPException(status_code=404, detail="Target bucket not found")
+            return get_nosuchbucket_response(target_name)
 
-        client = app.clients[target_name]
+        client = get_client(target_name)
         client_prefix = target_config.prefix
 
         key = target_path

@@ -1,6 +1,5 @@
 import os
 import sys
-import inspect
 import typing
 from typing_extensions import override
 
@@ -15,18 +14,6 @@ from fastapi.responses import Response, StreamingResponse, JSONResponse
 from jproxy.utils import *
 from jproxy.client import ProxyClient
 from jproxy.settings import S3LikeTarget
-
-
-def get_nosuchkey_response(key):
-    return Response(content=inspect.cleandoc(f"""
-        <?xml version="1.0" encoding="UTF-8"?>
-        <Error>
-            <Code>NoSuchKey</Code>
-            <Message>The specified key does not exist.</Message>
-            <Key>{key}</Key>
-        </Error>
-        """), status_code=404, media_type="application/xml")
-
 
 def handle_s3_exception(e, key=None):
     """ Handle various cases of generic errors from the boto AWS API.
