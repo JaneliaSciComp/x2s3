@@ -4,18 +4,15 @@ from typing import Optional
 
 from loguru import logger
 from fastapi import FastAPI, HTTPException, Request, Query
-from fastapi.responses import Response, HTMLResponse, JSONResponse, FileResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from pydantic import HttpUrl
 
 from jproxy.utils import *
 from jproxy.settings import get_settings, S3LikeTarget
-#from jproxy.proxy_fsspec import FSSpecProxyClient
-#from jproxy.proxy_boto3 import Boto3ProxyClient
 from jproxy.proxy_aioboto import AiobotoProxyClient
 
 
@@ -58,6 +55,9 @@ async def startup_event():
         else:
             raise RuntimeError(f"Unknown target type: {type(target_config)}")
 
+        if target_key in app.clients:
+            logger.warning(f"Overriding target key: {target_key}")
+
         app.clients[target_key] = client
         logger.info(f"Configured target {target_name}")
 
@@ -67,28 +67,6 @@ def get_client(target_name):
     if target_key in app.clients:
         return app.clients[target_key]
     return None
-
-
-def get_read_access_acl():
-    """ Returns an S3 ACL that grants full read access
-    """
-    acl_xml = """
-    <AccessControlPolicy>
-        <Owner>
-            <ID>1</ID>
-            <DisplayName>unknown</DisplayName>
-        </Owner>
-        <AccessControlList>
-            <Grant>
-                <Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="Group">
-                    <URI>http://acs.amazonaws.com/groups/global/AllUsers</URI>
-                </Grantee>
-                <Permission>READ</Permission>
-            </Grant>
-        </AccessControlList>
-    </AccessControlPolicy>
-    """
-    return Response(content=acl_xml, media_type="application/xml")
 
 
 def get_target(request, path):

@@ -77,6 +77,7 @@ def get_nosuchbucket_response(bucket_name):
     </Error>
     """), status_code=404, media_type="application/xml")
 
+
 def get_accessdenied_response():
     return Response(content=inspect.cleandoc("""
     <?xml version="1.0" encoding="UTF-8"?>
@@ -85,3 +86,25 @@ def get_accessdenied_response():
         <Message>Access Denied</Message>
     </Error>
     """), status_code=403, media_type="application/xml")
+
+
+def get_read_access_acl():
+    """ Returns an S3 ACL that grants full read access
+    """
+    acl_xml = """
+    <AccessControlPolicy>
+        <Owner>
+            <ID>1</ID>
+            <DisplayName>unknown</DisplayName>
+        </Owner>
+        <AccessControlList>
+            <Grant>
+                <Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="Group">
+                    <URI>http://acs.amazonaws.com/groups/global/AllUsers</URI>
+                </Grantee>
+                <Permission>READ</Permission>
+            </Grant>
+        </AccessControlList>
+    </AccessControlPolicy>
+    """
+    return Response(content=acl_xml, media_type="application/xml")
