@@ -1,5 +1,7 @@
 # jproxy
 
+![Python CI](https://github.com/github/docs/actions/workflows/python-ci.yml/badge.svg)
+
 This is a minimal proxy server to make data sets on S3-compatible interfaces (AWS S3, Seagate Lyve, VAST S3, etc.) available pubicly. It was built to support NGFF viewers such as [N5 Viewer](https://github.com/saalfeldlab/n5-viewer) (BigDataViewer) and [Neuroglancer](https://github.com/google/neuroglancer).
 
 Features:
