@@ -118,17 +118,17 @@ python -m pytest --cov=jproxy --cov-report html -W ignore::DeprecationWarning
 
 ## Building the Docker container
 
-Run the Docker build, replacing `latest` with your version number:
+Run the Docker build, replacing $VERSION with your version number:
 
 ```bash
 cd docker/
-docker build . --no-cache -t ghcr.io/janeliascicomp/jproxy:latest
+docker build . --build-arg GIT_TAG=$VERSION -t ghcr.io/janeliascicomp/jproxy:$VERSION
 ```
 
 ## Pushing the Docker container
 
 ```bash
-docker push ghcr.io/janeliascicomp/jproxy:latest
+docker push ghcr.io/janeliascicomp/jproxy:$VERSION
 ```
 
 # Attributions
