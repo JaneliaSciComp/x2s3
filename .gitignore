@@ -1,4 +1,6 @@
 __pycache__
+.coverage
+.DS_Store
 var
 config.yaml
 .env

@@ -97,6 +97,14 @@ docker compose up -d
 
 # Development Notes
 
+## Testing
+
+To run the tests and produce a code coverage report:
+
+```bash
+python -m pytest --cov=jproxy --cov-report html -W ignore::DeprecationWarning
+```
+
 ## Building the Docker container
 
 Run the Docker build, replacing `latest` with your version number:
