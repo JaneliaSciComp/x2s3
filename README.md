@@ -91,6 +91,7 @@ CONFIG_FILE=/path/to/config.yaml
 VAR_DIR=/path/to/var/dir
 CERT_FILE=/path/to/cert.crt
 KEY_FILE=/path/to/cert.key
+NGINX_CACHE_DIR=/path/to/cache
 ```
 
 These properties configure the service as follows:
@@ -98,6 +99,7 @@ These properties configure the service as follows:
 * `VAR_DIR`: optional path to the var directory containing access keys referenced by `config.yaml`
 * `CERT_FILE`: optional path to the SSL cert file
 * `KEY_FILE`: optional path to the SSL key file
+* `NGINX_CACHE_DIR`: path for Nginx response caching (disable this by editing `nginx.conf`)
 
 Now you can bring up the container:
 

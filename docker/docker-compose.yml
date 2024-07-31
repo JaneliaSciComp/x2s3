@@ -12,6 +12,7 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ${CERT_FILE}:/certs/default.crt:ro
       - ${KEY_FILE}:/certs/default.key:ro
+      - ${NGINX_CACHE_DIR}:/var/cache/nginx
 
   jproxy:
     image: ghcr.io/janeliascicomp/jproxy:0.2.0
