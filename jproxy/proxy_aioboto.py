@@ -123,8 +123,10 @@ class AiobotoProxyClient(ProxyClient):
         self.client_kwargs = {
             'aws_access_key_id': access_key,
             'aws_secret_access_key': secret_key,
-            'endpoint_url': str(config.endpoint)
         }
+
+        if config.endpoint:
+            self.client_kwargs['endpoint_url'] = str(config.endpoint)
 
 
     def get_client_creator(self):

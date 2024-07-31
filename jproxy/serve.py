@@ -46,7 +46,7 @@ async def startup_event():
     app.settings = get_settings()
     app.clients = {}
 
-    for target_name in app.settings.get_targets():
+    for target_name in app.settings.target_map:
         target_key = target_name.lower()
         target_config = app.settings.get_target_config(target_key)
 
@@ -72,8 +72,12 @@ def get_client(target_name):
 def get_target(request, path):
     target_path = path
     base_url = app.settings.base_url
+    
+    logger.trace(f"base_url: {base_url}")
+    logger.trace(f"request.url.hostname: {request.url.hostname}")
+
     subdomain = request.url.hostname.removesuffix(base_url.host).removesuffix('.')
-    logger.trace(f"subdomain: {subdomain}")
+
     if subdomain:
         # Target is given in the subdomain
         is_virtual = True
@@ -109,9 +113,11 @@ async def browse_bucket(request: Request,
         raise HTTPException(status_code=404, detail="Target bucket not found")
 
     client = get_client(target_name)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Client for target bucket not found")
+
     bucket_name = target_config.bucket
 
-    parent_prefix = dir_path(os.path.dirname(prefix.rstrip('/')))
     response = await client.list_objects_v2(continuation_token, '/', None,
                                             False, max_keys, prefix, None)
 
@@ -155,6 +161,8 @@ async def browse_bucket(request: Request,
     if not is_virtual:
         target_prefix = '/'+target_name
 
+    parent_prefix = dir_path(os.path.dirname(prefix.rstrip('/')))
+    
     return templates.TemplateResponse("browse.html", {
         "request": request,
         "bucket_name": bucket_name,
@@ -185,7 +193,7 @@ async def target_dispatcher(request: Request,
                             acl: str = Query(None),
                             list_type: int = Query(None, alias="list-type"),
                             continuation_token: Optional[str] = Query(None, alias="continuation-token"),
-                            delimiter: Optional[str] = Query('/', alias="delimiter"),
+                            delimiter: Optional[str] = Query(None, alias="delimiter"),
                             encoding_type: Optional[str] = Query(None, alias="encoding-type"),
                             fetch_owner: Optional[bool] = Query(None, alias="fetch-owner"),
                             max_keys: Optional[int] = Query(1000, alias="max-keys"),
@@ -193,6 +201,7 @@ async def target_dispatcher(request: Request,
                             start_after: Optional[str] = Query(None, alias="start-after")):
 
     target_name, target_path, is_virtual = get_target(request, path)
+
     if not target_name:
         # Return target index
         bucket_list = { target: f"/{target}/" for target in app.settings.get_targets()}
@@ -203,6 +212,8 @@ async def target_dispatcher(request: Request,
         return get_nosuchbucket_response(target_name)
 
     client = get_client(target_name)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Client for target bucket not found")
 
     if acl is not None:
         return get_read_access_acl()
@@ -240,6 +251,9 @@ async def head_object(request: Request, path: str):
             return get_nosuchbucket_response(target_name)
 
         client = get_client(target_name)
+        if client is None:
+            raise HTTPException(status_code=500, detail="Client for target bucket not found")
+            
         client_prefix = target_config.prefix
 
         key = target_path

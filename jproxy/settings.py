@@ -21,7 +21,7 @@ class Credentials(BaseModel):
 
 
 class S3LikeTarget(Target):
-    endpoint: HttpUrl
+    endpoint: HttpUrl = None
     bucket: str
     prefix: str = None
     credentials: Credentials = None
