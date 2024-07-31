@@ -1,6 +1,15 @@
+# Python
 __pycache__
-.coverage
+
+# File system
 .DS_Store
+
+# App
 var
-config.yaml
 .env
+config.yaml
+
+# Testing
+.coverage
+htmlconv
+assets
