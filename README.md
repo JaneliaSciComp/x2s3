@@ -40,6 +40,7 @@ Create a virtualenv and install the dependencies:
 Create a `config.yaml` file that contains all of the buckets you want to proxy:
 
 ```yaml
+base_url: https://your.domain.org
 targets:
   - name: scicompsoft-public
     endpoint: https://s3.us-east-1.lyvecloud.seagate.com/
@@ -61,6 +62,8 @@ targets:
 
 For each bucket, you can either provide credentials, or it will fallback on anonymous access. Credentials are read from files on disk. You can specify a `prefix` to constrain browsing of a bucket to a given subpath. Set `hidden` to hide the bucket from the main listing -- you may also want to obfuscate the bucket name.
 
+The `base_url` is how your server will be addressed externally. If you are using https then you will need to provide the `ssl-keyfile` and `ssl-certfile` when running Uvicorn (or equivalently `KEY_FILE` and `CERT_FILE` when running in Docker.)
+
 ## Run server
 
 The service is written using FastAPI and runs inside of Uvicorn:
@@ -75,20 +78,26 @@ You can specify TLS certificates and increase the number of workers in order to 
 uvicorn jproxy.serve:app --host 0.0.0.0 --port 8000 --workers 8 --access-log --ssl-keyfile /opt/tls/cert.key --ssl-certfile /opt/tls/cert.crt
 ```
 
-# Production
+# Production Deployment
 
 ## Running inside a Docker container
 
 First you'll need a `config.yaml` as described above.
 
-Create a `./docker/.env` file that looks like this:
+Next, create a `./docker/.env` file that looks like this:
 
 ```bash
 CONFIG_FILE=/path/to/config.yaml
-VAR_DIR=/path/to/var
+VAR_DIR=/path/to/var/dir
 CERT_FILE=/path/to/cert.crt
 KEY_FILE=/path/to/cert.key
 ```
+
+These properties configure the service as follows:
+* `CONFIG_FILE`: path to the `config.yaml` settings file
+* `VAR_DIR`: optional path to the var directory containing access keys referenced by `config.yaml`
+* `CERT_FILE`: optional path to the SSL cert file
+* `KEY_FILE`: optional path to the SSL key file
 
 Now you can bring up the container:
 
