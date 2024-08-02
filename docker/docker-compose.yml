@@ -15,7 +15,7 @@ services:
       - ${NGINX_CACHE_DIR}:/var/cache/nginx
 
   jproxy:
-    image: ghcr.io/janeliascicomp/jproxy:0.2.0
+    image: ghcr.io/janeliascicomp/jproxy:0.3.0
     container_name: jproxy
     restart: unless-stopped
     ports:
