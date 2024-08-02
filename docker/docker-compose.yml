@@ -16,9 +16,13 @@ services:
 
   jproxy:
     image: ghcr.io/janeliascicomp/jproxy:0.2.0
+    container_name: jproxy
     restart: unless-stopped
     ports:
       - 8000
     volumes:
       - ${CONFIG_FILE}:/app/jproxy/config.yaml
       - ${VAR_DIR}:/app/jproxy/var
+    environment:
+      NUM_WORKERS: 8
+

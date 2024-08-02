@@ -162,7 +162,7 @@ async def browse_bucket(request: Request,
         target_prefix = '/'+target_name
 
     parent_prefix = dir_path(os.path.dirname(prefix.rstrip('/')))
-    
+
     return templates.TemplateResponse("browse.html", {
         "request": request,
         "bucket_name": bucket_name,
@@ -202,7 +202,7 @@ async def target_dispatcher(request: Request,
 
     target_name, target_path, is_virtual = get_target(request, path)
 
-    if not target_name:
+    if not target_name or (is_virtual and target_name=='www'):
         # Return target index
         bucket_list = { target: f"/{target}/" for target in app.settings.get_targets()}
         return templates.TemplateResponse("index.html", {"request": request, "links": bucket_list})

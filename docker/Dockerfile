@@ -12,5 +12,5 @@ WORKDIR /app/jproxy
 
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
 
-CMD uvicorn jproxy.serve:app --host ${HOST} --port ${PORT} --workers ${NUM_WORKERS} --access-log
+CMD uvicorn jproxy.serve:app --host ${HOST} --port ${PORT} --workers ${NUM_WORKERS} --access-log --forwarded-allow-ips='*' --proxy-headers
 
