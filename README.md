@@ -69,13 +69,13 @@ The `base_url` is how your server will be addressed externally. If you are using
 The service is written using FastAPI and runs inside of Uvicorn:
 
 ```bash
-uvicorn jproxy.serve:app --host 0.0.0.0 --port 8000 --access-log --reload
+uvicorn jproxy.app:app --host 0.0.0.0 --port 8000 --access-log --reload
 ```
 
 You can specify TLS certificates and increase the number of workers in order to scale the service for production usage:
 
 ```bash
-uvicorn jproxy.serve:app --host 0.0.0.0 --port 8000 --workers 8 --access-log --ssl-keyfile /opt/tls/cert.key --ssl-certfile /opt/tls/cert.crt
+uvicorn jproxy.app:app --host 0.0.0.0 --port 8000 --workers 8 --access-log --ssl-keyfile /opt/tls/cert.key --ssl-certfile /opt/tls/cert.crt
 ```
 
 # Production Deployment
