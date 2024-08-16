@@ -1,5 +1,4 @@
-from pathlib import Path
-from typing import List, Dict, Union, Optional
+from typing import List, Dict, Optional
 from functools import cache
 
 from pydantic import HttpUrl, BaseModel
@@ -13,23 +12,9 @@ from pydantic_settings import (
 class Target(BaseModel):
     name: str
     hidden: bool = False
-
-
-class Credentials(BaseModel):
-    accessKeyPath: Path
-    secretKeyPath: Path
-
-
-class S3LikeTarget(Target):
-    endpoint: HttpUrl = None
-    bucket: str
     prefix: str = None
-    credentials: Credentials = None
-
-
-class LocalTarget(Target):
-    name: str
-    path: Path
+    client: str = "aioboto"
+    options: Dict[str,str] = {}
 
 
 class Settings(BaseSettings):
@@ -40,7 +25,7 @@ class Settings(BaseSettings):
     """
 
     base_url: Optional[HttpUrl] = None
-    targets: List[Union[S3LikeTarget, LocalTarget]] = []
+    targets: List[Target] = []
     target_map: Dict[str, Target] = {}
     log_level: str = 'INFO'
 

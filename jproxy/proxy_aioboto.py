@@ -13,7 +13,6 @@ from fastapi.responses import Response, StreamingResponse, JSONResponse
 
 from jproxy.utils import *
 from jproxy.client import ProxyClient
-from jproxy.settings import S3LikeTarget
 
 def handle_s3_exception(e, key=None):
     """ Handle various cases of generic errors from the boto AWS API.
@@ -37,82 +36,21 @@ def handle_s3_exception(e, key=None):
         return JSONResponse({"error":"Error communicating with AWS S3"}, status_code=500)
 
 
-# Adapted from https://stackoverflow.com/questions/69617252/response-file-stream-from-s3-fastapi
-class S3Stream(StreamingResponse):
-    """ Stream the result of GetObject.
-    """
-    def __init__(
-            self,
-            client_creator: typing.Callable,
-            content: typing.Any = None,
-            status_code: int = 200,
-            headers: dict = None,
-            media_type: str = None,
-            background: BackgroundTask = None,
-            bucket: str = None,
-            key: str = None
-    ):
-        super(S3Stream, self).__init__(content, status_code, headers, media_type, background)
-        self.client_creator = client_creator
-        self.bucket = bucket
-        self.key = key
-
-    async def stream_response(self, send) -> None:
-        async with self.client_creator() as client:
-            try:
-                result = await client.get_object(Bucket=self.bucket, Key=self.key)
-
-                await send({
-                    "type": "http.response.start",
-                    "status": self.status_code,
-                    "headers": self.raw_headers,
-                })
-
-                async for chunk in result["Body"]:
-
-                    if not isinstance(chunk, bytes):
-                        chunk = chunk.encode(self.charset)
-
-                    await send({
-                        "type": "http.response.body",
-                        "body": chunk,
-                        "more_body": True
-                    })
-
-                await send({
-                    "type": "http.response.body",
-                    "body": b"",
-                    "more_body": False})
-
-            except client.exceptions.NoSuchKey:
-                r = get_nosuchkey_response(self.key)
-                await send({
-                    "type": "http.response.start",
-                    "status": r.status_code,
-                    "headers": r.raw_headers,
-                })
-                await send({
-                    "type": "http.response.body",
-                    "body": r.body,
-                    "more_body": False,
-                })
-
-
 class AiobotoProxyClient(ProxyClient):
 
-    def __init__(self, config: S3LikeTarget):
+    def __init__(self, target_name, **kwargs):
 
-        self.target_name = config.name
-        self.bucket_name = config.bucket
-        self.prefix = config.prefix
+        self.target_name = target_name
+        self.bucket_name = kwargs['bucket']
+        self.prefix = kwargs.get('prefix')
 
         self.anonymous = True
         access_key,secret_key = '',''
 
-        if config.credentials:
+        if 'access_key_path' in kwargs:
             self.anonymous = False
-            access_key_path = config.credentials.accessKeyPath
-            secret_key_path = config.credentials.secretKeyPath
+            access_key_path = kwargs['access_key_path']
+            secret_key_path = kwargs['secret_key_path']
 
             with open(access_key_path, 'r') as ak_file:
                 access_key = ak_file.read().strip()
@@ -125,8 +63,8 @@ class AiobotoProxyClient(ProxyClient):
             'aws_secret_access_key': secret_key,
         }
 
-        if config.endpoint:
-            self.client_kwargs['endpoint_url'] = str(config.endpoint)
+        if 'endpoint' in kwargs:
+            self.client_kwargs['endpoint_url'] = kwargs.get('endpoint')
 
 
     def get_client_creator(self):
@@ -246,3 +184,65 @@ class AiobotoProxyClient(ProxyClient):
 
             except Exception as e:
                 return handle_s3_exception(e, key=prefix)
+
+
+# Adapted from https://stackoverflow.com/questions/69617252/response-file-stream-from-s3-fastapi
+class S3Stream(StreamingResponse):
+    """ Stream the result of GetObject.
+    """
+    def __init__(
+            self,
+            client_creator: typing.Callable,
+            content: typing.Any = None,
+            status_code: int = 200,
+            headers: dict = None,
+            media_type: str = None,
+            background: BackgroundTask = None,
+            bucket: str = None,
+            key: str = None
+    ):
+        super(S3Stream, self).__init__(content, status_code, headers, media_type, background)
+        self.client_creator = client_creator
+        self.bucket = bucket
+        self.key = key
+
+    async def stream_response(self, send) -> None:
+        logger.info(self.media_type)
+        async with self.client_creator() as client:
+            try:
+                result = await client.get_object(Bucket=self.bucket, Key=self.key)
+
+                await send({
+                    "type": "http.response.start",
+                    "status": self.status_code,
+                    "headers": self.raw_headers,
+                })
+
+                async for chunk in result["Body"]:
+
+                    if not isinstance(chunk, bytes):
+                        chunk = chunk.encode(self.charset)
+
+                    await send({
+                        "type": "http.response.body",
+                        "body": chunk,
+                        "more_body": True
+                    })
+
+                await send({
+                    "type": "http.response.body",
+                    "body": b"",
+                    "more_body": False})
+
+            except client.exceptions.NoSuchKey:
+                r = get_nosuchkey_response(self.key)
+                await send({
+                    "type": "http.response.start",
+                    "status": r.status_code,
+                    "headers": r.raw_headers,
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": r.body,
+                    "more_body": False,
+                })

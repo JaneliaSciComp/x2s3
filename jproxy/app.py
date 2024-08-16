@@ -12,8 +12,8 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from jproxy.utils import *
-from jproxy.settings import get_settings, S3LikeTarget
-from jproxy.proxy_aioboto import AiobotoProxyClient
+from jproxy import registry
+from jproxy.settings import get_settings
 
 
 app = FastAPI()
@@ -49,16 +49,16 @@ async def startup_event():
     logger.remove()
     logger.add(sys.stderr, level=app.settings.log_level)
 
+    logger.info(f"Available protocols:")
+    for proto in registry.available_protocols():
+        logger.info(f"- {proto}")
+
     # Configure targets
     app.clients = {}
     for target_name in app.settings.target_map:
         target_key = target_name.lower()
         target_config = app.settings.get_target_config(target_key)
-
-        if isinstance(target_config, S3LikeTarget):
-            client = AiobotoProxyClient(target_config)
-        else:
-            raise RuntimeError(f"Unknown target type: {type(target_config)}")
+        client = registry.client(target_config.client, target_name, **target_config.options)
 
         if target_key in app.clients:
             logger.warning(f"Overriding target key: {target_key}")
@@ -123,8 +123,6 @@ async def browse_bucket(request: Request,
     if client is None:
         raise HTTPException(status_code=500, detail="Client for target bucket not found")
 
-    bucket_name = target_config.bucket
-
     response = await client.list_objects_v2(continuation_token, '/', None,
                                             False, max_keys, prefix, None)
 
@@ -172,7 +170,6 @@ async def browse_bucket(request: Request,
 
     return templates.TemplateResponse("browse.html", {
         "request": request,
-        "bucket_name": bucket_name,
         "prefix": prefix,
         "target_prefix": target_prefix,
         "common_prefixes": common_prefixes,

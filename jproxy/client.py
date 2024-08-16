@@ -2,7 +2,7 @@ class ProxyClient:
     """ Interface for a client that implements an S3-like interface 
         to key-value access against some backend service. 
 
-        Warning: this interface does not try to encode the entire S3 API!
+        Note that this interface does not try to encode the entire S3 API.
         We only care about the bare-bones functionality that is required 
         for viewers like Neuroglancer, N5 Viewer, Vizarr, etc.
     """
