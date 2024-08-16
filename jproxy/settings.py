@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Optional
 from functools import cache
 
 from pydantic import HttpUrl, BaseModel
@@ -39,9 +39,10 @@ class Settings(BaseSettings):
         be passed in the environment or in a .env file. 
     """
 
-    base_url: HttpUrl = 'http://127.0.0.1:8000/'
+    base_url: Optional[HttpUrl] = None
     targets: List[Union[S3LikeTarget, LocalTarget]] = []
     target_map: Dict[str, Target] = {}
+    log_level: str = 'INFO'
 
     model_config = SettingsConfigDict(
         yaml_file="config.yaml",

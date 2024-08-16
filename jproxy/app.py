@@ -44,8 +44,13 @@ async def startup_event():
         Reads the configuration and sets up the proxy clients. 
     """
     app.settings = get_settings()
-    app.clients = {}
 
+    # Configure logging
+    logger.remove()
+    logger.add(sys.stderr, level=app.settings.log_level)
+
+    # Configure targets
+    app.clients = {}
     for target_name in app.settings.target_map:
         target_key = target_name.lower()
         target_config = app.settings.get_target_config(target_key)
@@ -76,7 +81,9 @@ def get_target(request, path):
     logger.trace(f"base_url: {base_url}")
     logger.trace(f"request.url.hostname: {request.url.hostname}")
 
-    subdomain = request.url.hostname.removesuffix(base_url.host).removesuffix('.')
+    subdomain = None
+    if base_url:
+        subdomain = request.url.hostname.removesuffix(base_url.host).removesuffix('.')
 
     if subdomain:
         # Target is given in the subdomain
@@ -201,6 +208,7 @@ async def target_dispatcher(request: Request,
                             start_after: Optional[str] = Query(None, alias="start-after")):
 
     target_name, target_path, is_virtual = get_target(request, path)
+    logger.debug(f"target_name={target_name}, target_path={target_path}, is_virtual={is_virtual}")
 
     if not target_name or (is_virtual and target_name=='www'):
         # Return target index
