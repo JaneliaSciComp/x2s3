@@ -1,5 +1,6 @@
 import os
 import sys
+from mimetypes import guess_type
 import typing
 from typing_extensions import override
 
@@ -94,16 +95,20 @@ class AiobotoProxyClient(ProxyClient):
         if self.prefix:
             key = os.path.join(self.prefix, key) if key else self.prefix
 
+        filename = os.path.basename(key)
+        headers = {}
+        content_type, _ = guess_type(filename)
+        if not content_type:
+            content_type = 'application/octet-stream'
+            headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+
         try:
-            filename = os.path.basename(key)
             return S3Stream(
                 self.get_client_creator,
                 bucket=self.bucket_name,
                 key=key,
-                media_type='application/octet-stream',
-                headers={
-                    'Content-Disposition': f'attachment; filename="{filename}"'
-                })
+                media_type=content_type,
+                headers=headers)
         except Exception as e:
             return handle_s3_exception(e, key)
 
