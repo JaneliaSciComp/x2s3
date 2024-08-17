@@ -92,7 +92,7 @@ def register_implementation(name, cls, clobber=False, errtxt=None):
 
 known_implementations = {
     "aioboto": {
-        "class": "jproxy.proxy_aioboto.AiobotoProxyClient"
+        "class": "jproxy.client_aioboto.AiobotoProxyClient"
     },
     "fsspec": {
         "class": "jproxy.proxy_fsspec.FSSpecProxyClient"
