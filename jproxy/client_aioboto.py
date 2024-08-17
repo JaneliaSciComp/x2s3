@@ -1,15 +1,14 @@
 import os
 import sys
-from mimetypes import guess_type
 import typing
 from typing_extensions import override
 
 from loguru import logger
 from starlette.background import BackgroundTask
 import botocore
+from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 from aiobotocore.session import get_session
 from aiobotocore.config import AioConfig
-from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 
 from jproxy.utils import *
@@ -39,11 +38,12 @@ def handle_s3_exception(e, key=None):
 
 class AiobotoProxyClient(ProxyClient):
 
-    def __init__(self, target_name, **kwargs):
+    def __init__(self, proxy_kwargs, **kwargs):
 
-        self.target_name = target_name
-        self.bucket_name = kwargs['bucket']
-        self.prefix = kwargs.get('prefix')
+        self.proxy_kwargs = proxy_kwargs or {}
+        self.target_name = self.proxy_kwargs['target_name']
+        self.prefix = self.proxy_kwargs.get('prefix')
+        self.bucket_name = kwargs.get('bucket', self.target_name)
 
         self.anonymous = True
         access_key,secret_key = '',''
@@ -81,10 +81,14 @@ class AiobotoProxyClient(ProxyClient):
                 s3_res = await client.head_object(Bucket=self.bucket_name, Key=key)
                 headers = {
                     "ETag": s3_res.get("ETag"),
-                    "Content-Type": s3_res.get("ContentType"),
+                    #"Content-Type": s3_res.get("ContentType"),
                     "Content-Length": str(s3_res.get("ContentLength")),
                     "Last-Modified": s3_res.get("LastModified").strftime("%a, %d %b %Y %H:%M:%S GMT")
                 }
+
+                content_type = guess_content_type(key)
+                headers['Content-Type'] = content_type
+
                 return Response(headers=headers)
             except Exception as e:
                 return handle_s3_exception(e, key)
@@ -97,9 +101,10 @@ class AiobotoProxyClient(ProxyClient):
 
         filename = os.path.basename(key)
         headers = {}
-        content_type, _ = guess_type(filename)
-        if not content_type:
-            content_type = 'application/octet-stream'
+
+        content_type = guess_content_type(filename)
+        headers['Content-Type'] = content_type
+        if content_type=='application/octet-stream':
             headers['Content-Disposition'] = f'attachment; filename="{filename}"'
 
         try:
@@ -161,7 +166,6 @@ class AiobotoProxyClient(ProxyClient):
                 add_telem(root, "KeyCount", response.get("KeyCount", 0))
                 add_telem(root, "ContinuationToken", continuation_token)
                 add_telem(root, "NextContinuationToken", next_token)
-                add_telem(root, "ContinuationToken", continuation_token)
                 add_telem(root, "StartAfter", start_after)
 
                 common_prefixes = add_elem(root, "CommonPrefixes")

@@ -1,7 +1,17 @@
 import inspect
 import xml.etree.ElementTree as ET
+from mimetypes import guess_type
 
 from fastapi.responses import Response
+
+# From https://stackoverflow.com/questions/1094841/get-a-human-readable-version-of-a-file-size
+def humanize_bytes(num, suffix="B"):
+    for unit in ("", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"):
+        if abs(num) < 1024.0:
+            return f"{num:3.1f} {unit}{suffix}"
+        num /= 1024.0
+    return f"{num:.1f} Yi{suffix}"
+
 
 def remove_prefix(prefix, key):
     """ Remove prefix from the key, and then the leading slash.
@@ -29,7 +39,8 @@ def add_elem(parent, key):
 def add_telem(parent, key, value):
     """ Add a text element as a child of the given XML parent.
     """
-    if not value: return None
+    if not value: 
+        return None
     elem = add_elem(parent, key)
     elem.text = str(value)
     return elem
@@ -47,13 +58,43 @@ def parse_xml(xml):
     return ET.fromstring(xml)
 
 
-# From https://stackoverflow.com/questions/1094841/get-a-human-readable-version-of-a-file-size
-def humanize_bytes(num, suffix="B"):
-    for unit in ("", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"):
-        if abs(num) < 1024.0:
-            return f"{num:3.1f} {unit}{suffix}"
-        num /= 1024.0
-    return f"{num:.1f} Yi{suffix}"
+def get_list_xml_elem(contents, common_prefixes, **kwargs):
+    """ Creates S3-style XML elements for the given object listing.
+    """
+
+    root = ET.Element("ListBucketResult")
+
+    keys = [
+        'Name', 
+        'Prefix',
+        'Delimiter',
+        'MaxKeys',
+        'EncodingType',
+        'KeyCount',
+        'IsTruncated',
+        'ContinuationToken',
+        'NextContinuationToken',
+        'StartAfter,'
+    ]
+
+    for key in keys:
+        add_telem(root, key, kwargs.get(key))
+
+    if common_prefixes:
+        common_prefixes_elem = add_elem(root, "CommonPrefixes")
+        for cp in common_prefixes:
+            add_telem(common_prefixes_elem, "Prefix", cp)
+
+    if contents:
+        for obj in contents:
+            contents_elem = add_elem(root, "Contents")
+            add_telem(contents_elem, "Key", obj["Key"])
+            add_telem(contents_elem, "ETag", obj.get("ETag"))
+            add_telem(contents_elem, "Size", obj.get("Size"))
+            add_telem(contents_elem, "LastModified", obj.get("LastModified"))
+            add_telem(contents_elem, "StorageClass", obj.get("StorageClass"))
+    
+    return root
 
 
 def get_nosuchkey_response(key):
@@ -108,3 +149,18 @@ def get_read_access_acl():
     </AccessControlPolicy>
     """
     return Response(content=acl_xml, media_type="application/xml")
+
+
+def guess_content_type(filename):
+    """ A wrapper for guess_type which deals with unknown MIME types
+    """
+    content_type, _ = guess_type(filename)
+    if content_type:
+        return content_type
+    else:
+        if filename.endswith('.yaml'):
+            # Should be application/yaml but that doesn't display in current browsers
+            # See https://httptoolkit.com/blog/yaml-media-type-rfc/
+            return 'text/plain+yaml'
+        else:
+            return 'application/octet-stream'

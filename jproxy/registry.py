@@ -94,8 +94,8 @@ known_implementations = {
     "aioboto": {
         "class": "jproxy.client_aioboto.AiobotoProxyClient"
     },
-    "fsspec": {
-        "class": "jproxy.proxy_fsspec.FSSpecProxyClient"
+    "file": {
+        "class": "jproxy.client_file.FileProxyClient"
     },
 }
 
@@ -163,14 +163,14 @@ def _import_class(fqp: str):
     return mod
 
 
-def client(protocol, target_name, **options):
+def client(protocol, proxy_kwargs, **options):
     """Instantiate clients for given protocol and arguments
 
     ``options`` are specific to the protocol being chosen, and are
     passed directly to the class.
     """
     cls = get_client_class(protocol)
-    return cls(target_name, **options)
+    return cls(proxy_kwargs, **options)
 
 
 def available_protocols():

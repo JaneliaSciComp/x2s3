@@ -49,16 +49,21 @@ async def startup_event():
     logger.remove()
     logger.add(sys.stderr, level=app.settings.log_level)
 
-    logger.info(f"Available protocols:")
+    logger.trace("Available protocols:")
     for proto in registry.available_protocols():
-        logger.info(f"- {proto}")
+        logger.trace(f"- {proto}")
 
     # Configure targets
     app.clients = {}
     for target_name in app.settings.target_map:
         target_key = target_name.lower()
         target_config = app.settings.get_target_config(target_key)
-        client = registry.client(target_config.client, target_name, **target_config.options)
+        proxy_kwargs = {
+            'target_name': target_name,
+            'prefix': target_config.prefix
+        }
+        client = registry.client(target_config.client, 
+            proxy_kwargs, **target_config.options)
 
         if target_key in app.clients:
             logger.warning(f"Overriding target key: {target_key}")
