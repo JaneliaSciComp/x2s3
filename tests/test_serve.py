@@ -8,27 +8,29 @@ from pydantic import HttpUrl
 from loguru import logger
 
 from xml.etree.ElementTree import Element
-from jproxy.serve import app
-from jproxy.settings import S3LikeTarget, get_settings
+from jproxy.app import app
+from jproxy.settings import Target, get_settings
 from jproxy.utils import parse_xml
 
 settings = get_settings()
 settings.base_url = HttpUrl('http://testserver')
 settings.targets = [
-    S3LikeTarget(
+    Target(
         name='janelia-data-examples',
-        bucket='janelia-data-examples'
+        options={'bucket':'janelia-data-examples'}
     ),
-    S3LikeTarget(
+    Target(
         name='with-prefix',
-        bucket='janelia-data-examples',
-        prefix='jrc_mus_lung_covid.n5/'
+        prefix='jrc_mus_lung_covid.n5/',
+        options={'bucket':'janelia-data-examples'}
     ),
-    S3LikeTarget(
+    Target(
         name='hidden-with-endpoint',
-        endpoint='https://s3.amazonaws.com',
-        bucket='janelia-data-examples',
-        hidden=True
+        hidden=True,
+        options={
+            'bucket':'janelia-data-examples',
+            'endpoint':'https://s3.amazonaws.com',
+        }
     )
 ]
 settings.target_map = {t.name.lower(): t for t in settings.targets}
