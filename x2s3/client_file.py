@@ -32,8 +32,8 @@ class FileProxyClient(ProxyClient):
     def __init__(self, proxy_kwargs, **kwargs):
         self.proxy_kwargs = proxy_kwargs or {}
         self.target_name = self.proxy_kwargs['target_name']
-        self.target_prefix = self.proxy_kwargs.get('prefix')
-        self.root_path = str(Path(kwargs['root']).resolve())
+        self.target_prefix = kwargs.get('prefix') # Not very useful and may be removed in the future
+        self.root_path = str(Path(kwargs['path']).resolve())
 
     @override
     async def head_object(self, key: str):
@@ -87,7 +87,6 @@ class FileProxyClient(ProxyClient):
 
         except Exception as e:
             return handle_exception(e, key)
-
 
 
     @override

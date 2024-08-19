@@ -19,5 +19,5 @@ if __name__ == "__main__":
     )
     args = argparser.parse_args()
 
-    uvicorn.run(app, host='0.0.0.0', port=args.port, workers=1)
+    uvicorn.run(app, host='0.0.0.0', port=args.port, workers=1, reload=True)
 

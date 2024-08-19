@@ -60,7 +60,6 @@ async def startup_event():
         target_config = app.settings.get_target_config(target_key)
         proxy_kwargs = {
             'target_name': target_name,
-            'prefix': target_config.prefix
         }
 
         client = registry.client(target_config.client,
@@ -171,10 +170,7 @@ async def browse_bucket(request: Request,
         next_ct_elem = root.find('NextContinuationToken')
         next_token = next_ct_elem.text
 
-    target_prefix = ''
-    if not is_virtual:
-        target_prefix = '/'+target_name
-
+    target_prefix = '' if is_virtual else '/'+target_name
     parent_prefix = dir_path(os.path.dirname(prefix.rstrip('/')))
 
     return templates.TemplateResponse("browse.html", {
@@ -218,7 +214,7 @@ async def target_dispatcher(request: Request,
 
     if not target_name or (is_virtual and target_name=='www'):
         # Return target index
-        bucket_list = { target: f"/{target}/" for target in app.settings.get_targets()}
+        bucket_list = { target: f"/{target}/" for target in app.settings.get_browseable_targets()}
         return templates.TemplateResponse("index.html", {"request": request, "links": bucket_list})
 
     target_config = app.settings.get_target_config(target_name)
@@ -267,14 +263,8 @@ async def head_object(request: Request, path: str):
         client = get_client(target_name)
         if client is None:
             raise HTTPException(status_code=500, detail="Client for target bucket not found")
-            
-        client_prefix = target_config.prefix
 
-        key = target_path
-        if client_prefix:
-            key = os.path.join(client_prefix, key) if key else client_prefix
-
-        return await client.head_object(key)
+        return await client.head_object(target_path)
     except:
         logger.opt(exception=sys.exc_info()).info("Error requesting head")
         return JSONResponse({"error":"Error requesting HEAD"}, status_code=500)

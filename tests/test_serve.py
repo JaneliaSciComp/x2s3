@@ -21,12 +21,14 @@ settings.targets = [
     ),
     Target(
         name='with-prefix',
-        prefix='jrc_mus_lung_covid.n5/',
-        options={'bucket':'janelia-data-examples'}
+        options={
+            'bucket':'janelia-data-examples',
+            'prefix':'jrc_mus_lung_covid.n5/'
+        }
     ),
     Target(
         name='hidden-with-endpoint',
-        hidden=True,
+        browseable=False,
         options={
             'bucket':'janelia-data-examples',
             'endpoint':'https://s3.amazonaws.com',
@@ -48,11 +50,12 @@ def test_get_html_root():
         response = client.get("/")
         assert response.status_code == 200
         assert response.headers['content-type'].startswith("text/html")
+        logger.info(response.text)
         for target in settings.targets:
-            if target.hidden:
-                assert target.name not in response.text
-            else:
+            if target.browseable:
                 assert target.name in response.text
+            else:
+                assert target.name not in response.text
 
 
 def test_get_html_listing():

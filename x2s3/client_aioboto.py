@@ -42,8 +42,8 @@ class AiobotoProxyClient(ProxyClient):
 
         self.proxy_kwargs = proxy_kwargs or {}
         self.target_name = self.proxy_kwargs['target_name']
-        self.target_prefix = self.proxy_kwargs.get('prefix')
         self.bucket_name = kwargs['bucket']
+        self.bucket_prefix = kwargs.get('prefix')
 
         self.anonymous = True
         access_key,secret_key = '',''
@@ -76,16 +76,20 @@ class AiobotoProxyClient(ProxyClient):
 
     @override
     async def head_object(self, key: str):
+        real_key = key
+        if self.bucket_prefix:
+            real_key = os.path.join(self.bucket_prefix, key) if key else self.bucket_prefix
+
         async with self.get_client_creator() as client:
             try:
-                s3_res = await client.head_object(Bucket=self.bucket_name, Key=key)
+                s3_res = await client.head_object(Bucket=self.bucket_name, Key=real_key)
                 headers = {
                     "ETag": s3_res.get("ETag"),
                     "Content-Length": str(s3_res.get("ContentLength")),
                     "Last-Modified": s3_res.get("LastModified").strftime("%a, %d %b %Y %H:%M:%S GMT")
                 }
 
-                content_type = guess_content_type(key)
+                content_type = guess_content_type(real_key)
                 headers['Content-Type'] = content_type
 
                 return Response(headers=headers)
@@ -95,10 +99,11 @@ class AiobotoProxyClient(ProxyClient):
 
     @override
     async def get_object(self, key: str):
-        if self.target_prefix:
-            key = os.path.join(self.target_prefix, key) if key else self.target_prefix
+        real_key = key
+        if self.bucket_prefix:
+            real_key = os.path.join(self.bucket_prefix, key) if key else self.bucket_prefix
 
-        filename = os.path.basename(key)
+        filename = os.path.basename(real_key)
         headers = {}
 
         content_type = guess_content_type(filename)
@@ -111,6 +116,7 @@ class AiobotoProxyClient(ProxyClient):
                 self.get_client_creator,
                 bucket=self.bucket_name,
                 key=key,
+                real_key=real_key,
                 media_type=content_type,
                 headers=headers)
         except Exception as e:
@@ -129,8 +135,8 @@ class AiobotoProxyClient(ProxyClient):
 
         # prefix user-supplied prefix with configured prefix
         real_prefix = prefix
-        if self.target_prefix:
-            real_prefix = os.path.join(self.target_prefix, prefix) if prefix else self.target_prefix
+        if self.bucket_prefix:
+            real_prefix = os.path.join(self.bucket_prefix, prefix) if prefix else self.bucket_prefix
 
         # ensure the prefix ends with a slash
         if real_prefix and not real_prefix.endswith('/'):
@@ -152,13 +158,13 @@ class AiobotoProxyClient(ProxyClient):
                 params = {k: v for k, v in params.items() if v is not None}
 
                 response = await client.list_objects_v2(**params)
-                next_token = remove_prefix(self.target_prefix, response.get("NextContinuationToken", ""))
+                next_token = remove_prefix(self.bucket_prefix, response.get("NextContinuationToken", ""))
                 is_truncated = "true" if response.get("IsTruncated", False) else "false"
 
                 contents = []
                 for obj in response.get("Contents", []):
                     contents.append({
-                        'Key': remove_prefix(self.target_prefix, obj["Key"]),
+                        'Key': remove_prefix(self.bucket_prefix, obj["Key"]),
                         'LastModified': obj["LastModified"].isoformat(),
                         'ETag': obj.get("ETag"),
                         'Size': obj.get("Size"),
@@ -167,7 +173,7 @@ class AiobotoProxyClient(ProxyClient):
 
                 common_prefixes = []
                 for cp in response.get("CommonPrefixes", []):
-                    common_prefix = remove_prefix(self.target_prefix, cp["Prefix"])
+                    common_prefix = remove_prefix(self.bucket_prefix, cp["Prefix"])
                     common_prefixes.append(common_prefix)
 
                 kwargs = {
@@ -205,17 +211,19 @@ class S3Stream(StreamingResponse):
             media_type: str = None,
             background: BackgroundTask = None,
             bucket: str = None,
-            key: str = None
+            key: str = None,
+            real_key: str = None,
     ):
         super(S3Stream, self).__init__(content, status_code, headers, media_type, background)
         self.client_creator = client_creator
         self.bucket = bucket
         self.key = key
+        self.real_key = real_key
 
     async def stream_response(self, send) -> None:
         async with self.client_creator() as client:
             try:
-                result = await client.get_object(Bucket=self.bucket, Key=self.key)
+                result = await client.get_object(Bucket=self.bucket, Key=self.real_key)
 
                 await send({
                     "type": "http.response.start",

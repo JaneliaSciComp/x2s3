@@ -11,8 +11,7 @@ from pydantic_settings import (
 
 class Target(BaseModel):
     name: str
-    hidden: bool = False
-    prefix: str = None
+    browseable: bool = True
     client: str = "aioboto"
     options: Dict[str,str] = {}
 
@@ -42,8 +41,8 @@ class Settings(BaseSettings):
         self.target_map = {t.name.lower(): t for t in self.targets}
 
 
-    def get_targets(self):
-        return [k for k in self.target_map if not self.target_map[k].hidden]
+    def get_browseable_targets(self):
+        return [target.name for target in self.targets if target.browseable]
 
 
     def get_target_config(self, name):

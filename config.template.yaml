@@ -35,16 +35,16 @@ targets:
   # using the default client (currently aioboto).
   #
   - name: cosem-data-with-prefix
-    prefix: aic_desmosome-1
     options:
       bucket: janelia-cosem-datasets
+      prefix: aic_desmosome-1
 
   #
   # Exposes s3://janelia-cosem-datasets at /cosem-data-hidden
   # using the default client (currently aioboto) and makes it unbrowseable
   #
   - name: cosem-data-hidden
-    hidden: true
+    browseable: false
     options:
       bucket: janelia-cosem-datasets
 
