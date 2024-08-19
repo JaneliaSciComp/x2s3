@@ -49,16 +49,21 @@ started quickly by using the provided example template:
 cp config.template.yaml config.yaml
 ```
 
-For each bucket, you can either provide credentials, or it will fallback on anonymous access. Credentials are read from files on disk. You can specify a `prefix` to constrain browsing of a bucket to a given subpath. Set `hidden` to hide the bucket from the main listing -- you may also want to obfuscate the bucket name.
+See the [documentation](docs/Config.md) for more information about the configuration file.
 
-The `base_url` is how your server will be addressed externally. If you are using https then you will need to provide the `ssl-keyfile` and `ssl-certfile` when running Uvicorn (or equivalently `KEY_FILE` and `CERT_FILE` when running in Docker.)
 
 ## Run server
 
-The service is written using FastAPI and runs inside of Uvicorn:
+The service is written using FastAPI and runs inside of Uvicorn. You can start a dev server quickly with the `run.py` script:
 
 ```bash
-uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --access-log --reload
+./run.py --port 8000
+```
+
+This is equivalent to:
+
+```bash
+uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --workers 1 --access-log --reload
 ```
 
 You can specify TLS certificates and increase the number of workers in order to scale the service for production usage:
@@ -71,15 +76,14 @@ uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --workers 8 --access-log --ssl-k
 
 ## Running inside a Docker container
 
-First you'll need a `config.yaml` as described above.
+For production deployments, we recommend using an orchestrator (like Docker Compose) to run the prebuilt Docker container along with an Nginx reverse proxy which provides caching and TLS termination.
 
-Next, create a `./docker/.env` file that looks like this:
+Create a `./docker/.env` file that looks like this:
 
 ```bash
 CONFIG_FILE=/path/to/config.yaml
 VAR_DIR=/path/to/var/dir
-CERT_FILE=/path/to/cert.crt
-KEY_FILE=/path/to/cert.key
+CERT_DIR=/path/to/certs
 NGINX_CACHE_DIR=/path/to/cache
 ```
 
@@ -88,7 +92,7 @@ These properties configure the service as follows:
 * `VAR_DIR`: optional path to the var directory containing access keys referenced by `config.yaml`
 * `CERT_FILE`: optional path to the SSL cert file
 * `KEY_FILE`: optional path to the SSL key file
-* `NGINX_CACHE_DIR`: path for Nginx response caching (disable this by editing `nginx.conf`)
+* `NGINX_CACHE_DIR`: path for Nginx response caching (you can disable caching by editing `nginx.conf`)
 
 Now you can bring up the container:
 
@@ -97,30 +101,10 @@ cd docker/
 docker compose up -d
 ```
 
-# Development Notes
+# Documentation
 
-## Testing
+See the [documentation](docs/Development.md) for more information about development.
 
-To run the tests and produce a code coverage report:
-
-```bash
-python -m pytest --cov=x2s3 --cov-report html -W ignore::DeprecationWarning
-```
-
-## Building the Docker container
-
-Run the Docker build, replacing $VERSION with your version number:
-
-```bash
-cd docker/
-docker build . --build-arg GIT_TAG=$VERSION -t ghcr.io/janeliascicomp/x2s3:$VERSION
-```
-
-## Pushing the Docker container
-
-```bash
-docker push ghcr.io/janeliascicomp/x2s3:$VERSION
-```
 
 # Attributions
 
