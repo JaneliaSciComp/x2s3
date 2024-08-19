@@ -2,21 +2,20 @@
 
 ![Python CI](https://github.com/JaneliaSciComp/x2s3/actions/workflows/python-ci.yml/badge.svg)
 
+Proxy service which makes storage systems available with an S3-compatible REST API. It was built to support cloud-compatible viewers such as [N5 Viewer](https://github.com/saalfeldlab/n5-viewer) (BigDataViewer) and [Neuroglancer](https://github.com/google/neuroglancer).
+
 <p align="center">
     <img src="https://raw.githubusercontent.com/JaneliaSciComp/x2s3/main/docs/use_cases.png">
 </p>
 
-
-This is a minimal proxy server to make data sets on S3-compatible interfaces (AWS S3, Seagate Lyve, VAST S3, etc.) available pubicly. It was built to support NGFF viewers such as [N5 Viewer](https://github.com/saalfeldlab/n5-viewer) (BigDataViewer) and [Neuroglancer](https://github.com/google/neuroglancer).
-
 Features:
-* HTML listings
-* Mulltiple data sources
+* Extensible support for backend storage systems
+* Web-based file browser
 * Hidden buckets
 * Hidden prefixes
 * Object streaming
 
-Inspired by other proxies such as [oxyno-zeta/s3-proxy](https://github.com/oxyno-zeta/s3-proxy) and [pottava/aws-s3-proxy](https://github.com/pottava/aws-s3-proxy), this proxy also implements enough of the AWS S3 HTTP API to be useable by AWS clients, such as the one in BigDataViewer.
+Inspired by S3 proxies such as [oxyno-zeta/s3-proxy](https://github.com/oxyno-zeta/s3-proxy) and [pottava/aws-s3-proxy](https://github.com/pottava/aws-s3-proxy), this service implements enough of the AWS S3 HTTP API to be useable by AWS clients, such as the one in BigDataViewer.
 
 S3 endpoints implemented:
 * [GetBucketAcl](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketAcl.html)
@@ -29,6 +28,7 @@ S3 features omitted:
 * Encryption
 * Versioning
 * RequestPayer
+* etc.
 
 # Getting Started
 
