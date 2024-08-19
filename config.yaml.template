@@ -5,37 +5,50 @@
 #base_url: https://yourdomain.org
 
 #
-# The list of target storage locations to proxy. 
+# Loguru logging level (ERROR, WARNING, INFO, DEBUG, TRACE)
 #
+log_level: INFO
+
+#--------------------------------------------------------------------------------------
+# The list of target storage locations to serve
+#--------------------------------------------------------------------------------------
 targets:
 
-#
-# Examples showing an AWS bucket configured in various ways
-#
+  #
+  # The 'file' client serves data from any local file path
+  #
+  - name: local_files
+    client: file
+    options:
+      root: .
 
-
+  #
   # Exposes s3://janelia-cosem-datasets at /cosem-data
+  #
   - name: cosem-data
     bucket: janelia-cosem-datasets
 
+  #
   # Exposes s3://janelia-cosem-datasets/aic_desmosome-1 at /cosem-data-with-prefix
+  #
   - name: cosem-data-with-prefix
     bucket: janelia-cosem-datasets
     prefix: aic_desmosome-1
 
+  #
   # Exposes s3://janelia-cosem-datasets at /cosem-data-hidden but makes it unbrowseable
+  #
   - name: cosem-data-hidden
     bucket: janelia-cosem-datasets
     hidden: true
 
 
-# To serve data from a private bucket, you must configure an access key and secret key as
-# demonstrated below. This example also shows how to use a custom endpoint.
-#
-#  - name: multifish
-#    endpoint: https://s3.us-east-1.lyvecloud.seagate.com/
-#    bucket: multifish
-#    credentials:
-#      accessKeyPath: './var/lyve_access_key'
-#      secretKeyPath: './var/lyve_secret_key'
-
+  # To serve data from a private bucket, you must configure an access key and secret key as
+  # demonstrated below. This example also shows how to use a custom endpoint.
+  #
+  #- name: multifish
+  #  endpoint: https://s3.us-east-1.lyvecloud.seagate.com/
+  #  bucket: multifish
+  #  credentials:
+  #    accessKeyPath: './var/lyve_access_key'
+  #    secretKeyPath: './var/lyve_secret_key'
