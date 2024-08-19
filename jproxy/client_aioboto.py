@@ -42,7 +42,7 @@ class AiobotoProxyClient(ProxyClient):
 
         self.proxy_kwargs = proxy_kwargs or {}
         self.target_name = self.proxy_kwargs['target_name']
-        self.prefix = self.proxy_kwargs.get('prefix')
+        self.target_prefix = self.proxy_kwargs.get('prefix')
         self.bucket_name = kwargs.get('bucket', self.target_name)
 
         self.anonymous = True
@@ -96,8 +96,8 @@ class AiobotoProxyClient(ProxyClient):
 
     @override
     async def get_object(self, key: str):
-        if self.prefix:
-            key = os.path.join(self.prefix, key) if key else self.prefix
+        if self.target_prefix:
+            key = os.path.join(self.target_prefix, key) if key else self.target_prefix
 
         filename = os.path.basename(key)
         headers = {}
@@ -129,12 +129,13 @@ class AiobotoProxyClient(ProxyClient):
                             start_after: str):
 
         # prefix user-supplied prefix with configured prefix
-        if self.prefix:
-            prefix = os.path.join(self.prefix, prefix) if prefix else self.prefix
+        real_prefix = prefix
+        if self.target_prefix:
+            real_prefix = os.path.join(self.target_prefix, prefix) if prefix else self.target_prefix
 
         # ensure the prefix ends with a slash
-        if prefix and not prefix.endswith('/'):
-            prefix += '/'
+        if real_prefix and not real_prefix.endswith('/'):
+            real_prefix += '/'
 
         async with self.get_client_creator() as client:
             try:
@@ -145,48 +146,46 @@ class AiobotoProxyClient(ProxyClient):
                     "EncodingType": encoding_type,
                     "FetchOwner": fetch_owner,
                     "MaxKeys": max_keys,
-                    "Prefix": prefix,
+                    "Prefix": real_prefix,
                     "StartAfter": start_after
                 }
                 # Remove any None values because boto3 doesn't like those
                 params = {k: v for k, v in params.items() if v is not None}
 
                 response = await client.list_objects_v2(**params)
-                res_prefix = remove_prefix(self.prefix, prefix)
-                next_token = remove_prefix(self.prefix, response.get("NextContinuationToken", ""))
-                truncated = "true" if response.get("IsTruncated", False) else "false"
+                next_token = remove_prefix(self.target_prefix, response.get("NextContinuationToken", ""))
+                is_truncated = "true" if response.get("IsTruncated", False) else "false"
 
-                root = ET.Element("ListBucketResult")
-                add_telem(root, "IsTruncated", truncated)
-                add_telem(root, "Name", self.target_name)
-                add_telem(root, "Prefix", res_prefix)
-                add_telem(root, "Delimiter", delimiter)
-                add_telem(root, "MaxKeys", max_keys)
-                add_telem(root, "EncodingType", encoding_type)
-                add_telem(root, "KeyCount", response.get("KeyCount", 0))
-                add_telem(root, "ContinuationToken", continuation_token)
-                add_telem(root, "NextContinuationToken", next_token)
-                add_telem(root, "StartAfter", start_after)
-
-                common_prefixes = add_elem(root, "CommonPrefixes")
-                for cp in response.get("CommonPrefixes", []):
-                    common_prefix = remove_prefix(self.prefix, cp["Prefix"])
-                    add_telem(common_prefixes, "Prefix", common_prefix)
-
+                contents = []
                 for obj in response.get("Contents", []):
-                    contents = add_elem(root, "Contents")
-                    add_telem(contents, "Key", remove_prefix(self.prefix, obj["Key"]))
-                    add_telem(contents, "LastModified", obj["LastModified"].isoformat())
-                    add_telem(contents, "ETag", obj["ETag"])
-                    add_telem(contents, "Size", obj["Size"])
-                    add_telem(contents, "StorageClass", obj.get("StorageClass", ""))
+                    contents.append({
+                        'Key': remove_prefix(self.target_prefix, obj["Key"]),
+                        'LastModified': obj["LastModified"].isoformat(),
+                        'ETag': obj.get("ETag"),
+                        'Size': obj.get("Size"),
+                        'StorageClass': obj.get("StorageClass")
+                    })
+                    logger.info(contents)
 
-                    if "Owner" in obj:
-                        display_name = obj["Owner"]["DisplayName"] if "DisplayName" in obj["Owner"] else ''
-                        owner_id = obj["Owner"]["ID"] if "ID" in obj["Owner"] else ''
-                        owner = add_elem(root, "Owner")
-                        add_telem(owner, "DisplayName", display_name)
-                        add_telem(owner, "ID", owner_id)
+                common_prefixes = []
+                for cp in response.get("CommonPrefixes", []):
+                    common_prefix = remove_prefix(self.target_prefix, cp["Prefix"])
+                    common_prefixes.append(common_prefix)
+
+                kwargs = {
+                    'Name': self.target_name,
+                    'Prefix': prefix,
+                    'Delimiter': delimiter,
+                    'MaxKeys': max_keys,
+                    'EncodingType': encoding_type,
+                    'KeyCount': response.get("KeyCount", 0),
+                    'IsTruncated': is_truncated,
+                    'ContinuationToken': continuation_token,
+                    'NextContinuationToken': next_token,
+                    'StartAfter': start_after
+                }
+
+                root = get_list_xml_elem(contents, common_prefixes, **kwargs)
 
                 xml_output = elem_to_str(root)
                 return Response(content=xml_output, media_type="application/xml")
@@ -216,7 +215,6 @@ class S3Stream(StreamingResponse):
         self.key = key
 
     async def stream_response(self, send) -> None:
-        logger.info(self.media_type)
         async with self.client_creator() as client:
             try:
                 result = await client.get_object(Bucket=self.bucket, Key=self.key)

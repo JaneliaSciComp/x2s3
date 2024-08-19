@@ -138,11 +138,14 @@ async def browse_bucket(request: Request,
     xml = response.body.decode("utf-8")
     root = parse_xml(xml)
 
-    cps = root.find('CommonPrefixes')
-    common_prefixes = [dir_path(e.text) for e in cps.iter('Prefix')] if cps else []
+    common_prefixes = []
+    cps = [c for c in root.findall('CommonPrefixes')]
+    if cps:
+        for cp in cps:
+            common_prefixes += [dir_path(e.text) for e in cp.iter('Prefix')] if cps else []
 
     contents = []
-    cs =[c for c in root.findall('Contents')]
+    cs = [c for c in root.findall('Contents')]
     if cs:
         for c in cs:
             key_elem = c.find('Key')
@@ -157,7 +160,7 @@ async def browse_bucket(request: Request,
 
                 lm_elem = c.find('LastModified')
                 if lm_elem is not None and lm_elem.text:
-                    content['lastmod'] = lm_elem.text
+                    content['lastmod'] = format_isoformat_as_local(lm_elem.text)
 
                 contents.append(content)
 

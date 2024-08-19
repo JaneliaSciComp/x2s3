@@ -1,7 +1,8 @@
 import inspect
+from datetime import datetime, timezone
 import xml.etree.ElementTree as ET
 from mimetypes import guess_type
-
+from dateutil import parser
 from fastapi.responses import Response
 
 # From https://stackoverflow.com/questions/1094841/get-a-human-readable-version-of-a-file-size
@@ -68,9 +69,9 @@ def get_list_xml_elem(contents, common_prefixes, **kwargs):
         'Name', 
         'Prefix',
         'Delimiter',
+        'KeyCount',
         'MaxKeys',
         'EncodingType',
-        'KeyCount',
         'IsTruncated',
         'ContinuationToken',
         'NextContinuationToken',
@@ -81,8 +82,8 @@ def get_list_xml_elem(contents, common_prefixes, **kwargs):
         add_telem(root, key, kwargs.get(key))
 
     if common_prefixes:
-        common_prefixes_elem = add_elem(root, "CommonPrefixes")
         for cp in common_prefixes:
+            common_prefixes_elem = add_elem(root, "CommonPrefixes")
             add_telem(common_prefixes_elem, "Prefix", cp)
 
     if contents:
@@ -93,8 +94,27 @@ def get_list_xml_elem(contents, common_prefixes, **kwargs):
             add_telem(contents_elem, "Size", obj.get("Size"))
             add_telem(contents_elem, "LastModified", obj.get("LastModified"))
             add_telem(contents_elem, "StorageClass", obj.get("StorageClass"))
-    
+
     return root
+
+
+def format_timestamp_s3(timestamp):
+    """ Format the given timestamp to ISO date format compatible with AWS S3.
+    """
+    dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+    return f"{dt.isoformat().split('+')[0][:-3]}Z"
+
+
+def format_isoformat_as_local(isodate):
+    """ Given a date formatted with ISO format, parse it and output it as a 
+        local date string for human consumption.
+    """
+    # Parse it
+    dt = parser.isoparse(isodate)
+    # Convert it to the local timezone
+    dt = dt.astimezone()
+    # Format it for humans
+    return dt.strftime("%Y-%m-%d at %I:%M %p")
 
 
 def get_nosuchkey_response(key):

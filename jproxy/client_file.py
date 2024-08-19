@@ -1,15 +1,17 @@
 import os
 import sys
-import time
+from hashlib import md5
+from pathlib import Path
 from typing_extensions import override
 
 from loguru import logger
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 
-from pathlib import Path
 from jproxy.utils import *
 from jproxy.client import ProxyClient
 
+# This introduced latency and is usually not necessary
+CALCULATE_ETAGS = False
 
 def handle_exception(e, key=None):
     """ Handle various cases of generic errors.
@@ -51,10 +53,7 @@ class FileProxyClient(ProxyClient):
             stats = os.stat(path)
             file_size = stats.st_size
             headers["Content-Length"] = str(file_size)
-
-            last_modified_time = time.gmtime(stats.st_mtime)
-            last_modified = time.strftime("%a, %d %b %Y %H:%M:%S GMT", last_modified_time)
-            headers["Last-Modified"] = last_modified
+            headers["Last-Modified"] = format_timestamp_s3(stats.st_mtime)
 
             return Response(headers=headers)
         except Exception as e:
@@ -82,10 +81,7 @@ class FileProxyClient(ProxyClient):
             stats = os.stat(path)
             file_size = stats.st_size
             headers["Content-Length"] = str(file_size)
-
-            last_modified_time = time.gmtime(stats.st_mtime)
-            last_modified = time.strftime("%a, %d %b %Y %H:%M:%S GMT", last_modified_time)
-            headers["Last-Modified"] = last_modified
+            headers["Last-Modified"] = format_timestamp_s3(stats.st_mtime)
 
             return StreamingResponse(file_iterator(path), headers=headers, media_type=content_type)
 
@@ -122,6 +118,7 @@ class FileProxyClient(ProxyClient):
 
             res = self.walk_path(path, continuation_token, delimiter, max_keys)
             contents = res['contents']
+            is_truncated = res['is_truncated']
             common_prefixes = sorted(res['common_prefixes'])
 
             kwargs = {
@@ -130,13 +127,14 @@ class FileProxyClient(ProxyClient):
                 'Delimiter': delimiter,
                 'MaxKeys': max_keys,
                 'EncodingType': encoding_type,
-                'KeyCount': len(contents),
+                'KeyCount': len(contents) + len(common_prefixes),
+                'IsTruncated': is_truncated,
                 'ContinuationToken': continuation_token,
                 'NextContinuationToken': res['next_token'],
                 'StartAfter': start_after
             }
 
-            root =  get_list_xml_elem(contents, common_prefixes, **kwargs)
+            root = get_list_xml_elem(contents, common_prefixes, **kwargs)
             return Response(content=elem_to_str(root), media_type="application/xml")
 
         except Exception as e:
@@ -163,24 +161,41 @@ class FileProxyClient(ProxyClient):
                     started = started or continuation_token == key
                     logger.trace(f"found {key} (started={started}, len={len(contents)})")
 
-                    if len(contents)==max_keys:
+                    if len(contents)+len(commons) == max_keys:
                         # Reached max keys to be retrieved
                         return {
                             'contents': contents, 
                             'common_prefixes': commons, 
-                            'next_token': key
+                            'next_token': key,
+                            'is_truncated': 'true'
                         }
 
                     if started:
+                        # Get details
+                        stats = os.stat(file_path)
+                        file_size = stats.st_size
+
+                        etag = '"48ed760a742c2263777c00b27df3024c"'
+                        if CALCULATE_ETAGS:
+                            # This is VERY slow because it needs to read every file it 
+                            # the 8388608 part size is used by AWS CLI and boto3
+                            etag = f'"{calc_etag(file_path, 8388608)}"'
+
                         contents.append({
-                            'Key': key,
-                            'Size': str(os.stat(file_path).st_size),
+                            'Key': remove_prefix(self.target_prefix, key),
+                            'Size': str(file_size),
+                            'ETag': etag,
+                            'LastModified': format_timestamp_s3(stats.st_mtime),
                             'StorageClass': 'STANDARD'
                         })
+                        logger.info(contents)
 
-                if started:
+                if started and delimiter:
+                    # CommonPrefixes are only generated when there is a delimiter
                     for d in dirs:
-                        commons.add(os.path.join(p, d))
+                        common_prefix = dir_path(os.path.join(p, d))
+                        common_prefix = remove_prefix(self.target_prefix, common_prefix)
+                        commons.add(common_prefix)
 
                 if delimiter=='/':
                     # Do not recurse
@@ -189,5 +204,14 @@ class FileProxyClient(ProxyClient):
         return {
             'contents': contents, 
             'common_prefixes': commons, 
-            'next_token': None
+            'next_token': None,
+            'is_truncated': 'false'
         }
+
+# From https://teppen.io/2018/10/23/aws_s3_verify_etags/
+def calc_etag(inputfile, partsize):
+    md5_digests = []
+    with open(inputfile, 'rb') as f:
+        for chunk in iter(lambda: f.read(partsize), b''):
+            md5_digests.append(md5(chunk).digest())
+    return md5(b''.join(md5_digests)).hexdigest() + '-' + str(len(md5_digests))
