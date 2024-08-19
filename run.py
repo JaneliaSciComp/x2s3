@@ -4,7 +4,7 @@
 
 import argparse
 import uvicorn
-from jproxy.app import app
+from x2s3.app import app
 
 if __name__ == "__main__":
 

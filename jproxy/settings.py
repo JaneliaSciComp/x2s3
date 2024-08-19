@@ -20,7 +20,7 @@ class Target(BaseModel):
 class Settings(BaseSettings):
     """ Settings can be read from a settings.yaml file, 
         or from the environment, with environment variables prepended 
-        with "jproxy_" (case insensitive). The environment variables can
+        with "x2s3_" (case insensitive). The environment variables can
         be passed in the environment or in a .env file. 
     """
 
@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         yaml_file="config.yaml",
         env_file='.env',
-        env_prefix='jproxy_',
+        env_prefix='x2s3_',
         env_nested_delimiter="__",
         env_file_encoding='utf-8'
     )

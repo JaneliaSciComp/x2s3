@@ -11,9 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from jproxy.utils import *
-from jproxy import registry
-from jproxy.settings import get_settings
+from x2s3.utils import *
+from x2s3 import registry
+from x2s3.settings import get_settings
 
 
 app = FastAPI()

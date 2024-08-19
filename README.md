@@ -58,13 +58,13 @@ The `base_url` is how your server will be addressed externally. If you are using
 The service is written using FastAPI and runs inside of Uvicorn:
 
 ```bash
-uvicorn jproxy.app:app --host 0.0.0.0 --port 8000 --access-log --reload
+uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --access-log --reload
 ```
 
 You can specify TLS certificates and increase the number of workers in order to scale the service for production usage:
 
 ```bash
-uvicorn jproxy.app:app --host 0.0.0.0 --port 8000 --workers 8 --access-log --ssl-keyfile /opt/tls/cert.key --ssl-certfile /opt/tls/cert.crt
+uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --workers 8 --access-log --ssl-keyfile /opt/tls/cert.key --ssl-certfile /opt/tls/cert.crt
 ```
 
 # Production Deployment
@@ -104,7 +104,7 @@ docker compose up -d
 To run the tests and produce a code coverage report:
 
 ```bash
-python -m pytest --cov=jproxy --cov-report html -W ignore::DeprecationWarning
+python -m pytest --cov=x2s3 --cov-report html -W ignore::DeprecationWarning
 ```
 
 ## Building the Docker container
@@ -113,13 +113,13 @@ Run the Docker build, replacing $VERSION with your version number:
 
 ```bash
 cd docker/
-docker build . --build-arg GIT_TAG=$VERSION -t ghcr.io/janeliascicomp/jproxy:$VERSION
+docker build . --build-arg GIT_TAG=$VERSION -t ghcr.io/janeliascicomp/x2s3:$VERSION
 ```
 
 ## Pushing the Docker container
 
 ```bash
-docker push ghcr.io/janeliascicomp/jproxy:$VERSION
+docker push ghcr.io/janeliascicomp/x2s3:$VERSION
 ```
 
 # Attributions

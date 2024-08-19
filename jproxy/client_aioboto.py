@@ -11,8 +11,8 @@ from aiobotocore.session import get_session
 from aiobotocore.config import AioConfig
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 
-from jproxy.utils import *
-from jproxy.client import ProxyClient
+from x2s3.utils import *
+from x2s3.client import ProxyClient
 
 def handle_s3_exception(e, key=None):
     """ Handle various cases of generic errors from the boto AWS API.

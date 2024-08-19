@@ -56,7 +56,7 @@ def register_implementation(name, cls, clobber=False, errtxt=None):
         Protocol name to associate with the class
     cls: class or str
         if a class: compliant implementation class (normally inherits from
-        ``jproxy.ProxyClient``, gets added to the registry. If a
+        ``x2s3.ProxyClient``, gets added to the registry. If a
         str, the full path to an implementation class like package.module.class,
         which gets added to known_implementations,
         so the import is deferred until the client is actually used.
@@ -92,10 +92,10 @@ def register_implementation(name, cls, clobber=False, errtxt=None):
 
 known_implementations = {
     "aioboto": {
-        "class": "jproxy.client_aioboto.AiobotoProxyClient"
+        "class": "x2s3.client_aioboto.AiobotoProxyClient"
     },
     "file": {
-        "class": "jproxy.client_file.FileProxyClient"
+        "class": "x2s3.client_file.FileProxyClient"
     },
 }
 

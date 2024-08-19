@@ -2,10 +2,10 @@ services:
 
   nginx:
     image: nginx
-    container_name: jproxy_nginx
+    container_name: x2s3_nginx
     restart: unless-stopped
     depends_on:
-      - jproxy
+      - x2s3
     ports:
       - 443:443
     volumes:
@@ -14,15 +14,15 @@ services:
       - ${CERT_DIR}:/certs:ro
       - ${NGINX_CACHE_DIR}:/var/cache/nginx
 
-  jproxy:
-    image: ghcr.io/janeliascicomp/jproxy:0.3.0
-    container_name: jproxy
+  x2s3:
+    image: ghcr.io/janeliascicomp/x2s3:0.3.0
+    container_name: x2s3
     restart: unless-stopped
     ports:
       - 8000
     volumes:
-      - ${CONFIG_FILE}:/app/jproxy/config.yaml
-      - ${VAR_DIR}:/app/jproxy/var
+      - ${CONFIG_FILE}:/app/x2s3/config.yaml
+      - ${VAR_DIR}:/app/x2s3/var
     environment:
       NUM_WORKERS: 8
 

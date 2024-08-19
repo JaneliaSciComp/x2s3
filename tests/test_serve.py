@@ -8,9 +8,9 @@ from pydantic import HttpUrl
 from loguru import logger
 
 from xml.etree.ElementTree import Element
-from jproxy.app import app
-from jproxy.settings import Target, get_settings
-from jproxy.utils import parse_xml
+from x2s3.app import app
+from x2s3.settings import Target, get_settings
+from x2s3.utils import parse_xml
 
 settings = get_settings()
 settings.base_url = HttpUrl('http://testserver')

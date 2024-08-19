@@ -7,8 +7,8 @@ from typing_extensions import override
 from loguru import logger
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 
-from jproxy.utils import *
-from jproxy.client import ProxyClient
+from x2s3.utils import *
+from x2s3.client import ProxyClient
 
 # This introduced latency and is usually not necessary
 CALCULATE_ETAGS = False
