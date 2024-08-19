@@ -3,7 +3,7 @@
 ![Python CI](https://github.com/JaneliaSciComp/x2s3/actions/workflows/python-ci.yml/badge.svg)
 
 <p align="center">
-    <img src="https://github.com/JaneliaSciComp/x2s3/docs/use_cases.png">
+    <img src="https://raw.githubusercontent.com/JaneliaSciComp/x2s3/main/docs/use_cases.png">
 </p>
 
 
