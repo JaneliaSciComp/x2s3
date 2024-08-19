@@ -74,7 +74,9 @@ def test_list_objects():
         root = parse_xml(response.text)
         assert root.tag == "ListBucketResult"
         assert root.find('Name').text == bucket_name
-        assert len(root.findall('CommonPrefixes')) == 1
+
+        # CommonPrefixes are only returned when there is a delimiter
+        assert len(root.findall('CommonPrefixes')) == 0
 
         contents = root.findall('Contents')
         assert len(contents) <= max_keys
@@ -99,7 +101,7 @@ def test_list_objects_delimiter():
         assert root.find('Delimiter').text == '/'
         assert len(root.findall('CommonPrefixes')) == 1
         assert root.find('IsTruncated').text == "false"
-    
+
 
 def test_list_objects_continuation():
     with TestClient(app) as client:
@@ -120,7 +122,7 @@ def test_list_objects_continuation():
             assert root.tag == "ListBucketResult"
             assert root.find('Name').text == bucket_name
             assert root.find('MaxKeys').text == str(max_keys)
-            assert len(root.findall('CommonPrefixes')) == 1
+            assert len(root.findall('CommonPrefixes')) == 0
 
             contents = root.findall('Contents')
             print(f"Got {len(contents)} results")
@@ -195,7 +197,7 @@ def test_prefixed_list_objects():
         assert root.tag == "ListBucketResult"
         assert root.find('Name').text == bucket_name
         assert root.find('Delimiter').text == '/'
-        assert len(root.findall('CommonPrefixes')) == 1
+        assert len(root.findall('CommonPrefixes')) == 2
         assert root.find('IsTruncated').text == "false"
 
 
