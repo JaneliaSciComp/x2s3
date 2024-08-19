@@ -43,7 +43,7 @@ class AiobotoProxyClient(ProxyClient):
         self.proxy_kwargs = proxy_kwargs or {}
         self.target_name = self.proxy_kwargs['target_name']
         self.target_prefix = self.proxy_kwargs.get('prefix')
-        self.bucket_name = kwargs.get('bucket', self.target_name)
+        self.bucket_name = kwargs['bucket']
 
         self.anonymous = True
         access_key,secret_key = '',''
@@ -81,7 +81,6 @@ class AiobotoProxyClient(ProxyClient):
                 s3_res = await client.head_object(Bucket=self.bucket_name, Key=key)
                 headers = {
                     "ETag": s3_res.get("ETag"),
-                    #"Content-Type": s3_res.get("ContentType"),
                     "Content-Length": str(s3_res.get("ContentLength")),
                     "Last-Modified": s3_res.get("LastModified").strftime("%a, %d %b %Y %H:%M:%S GMT")
                 }
@@ -165,7 +164,6 @@ class AiobotoProxyClient(ProxyClient):
                         'Size': obj.get("Size"),
                         'StorageClass': obj.get("StorageClass")
                     })
-                    logger.info(contents)
 
                 common_prefixes = []
                 for cp in response.get("CommonPrefixes", []):

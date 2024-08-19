@@ -62,7 +62,8 @@ async def startup_event():
             'target_name': target_name,
             'prefix': target_config.prefix
         }
-        client = registry.client(target_config.client, 
+
+        client = registry.client(target_config.client,
             proxy_kwargs, **target_config.options)
 
         if target_key in app.clients:

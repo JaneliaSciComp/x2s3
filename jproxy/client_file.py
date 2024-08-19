@@ -188,7 +188,6 @@ class FileProxyClient(ProxyClient):
                             'LastModified': format_timestamp_s3(stats.st_mtime),
                             'StorageClass': 'STANDARD'
                         })
-                        logger.info(contents)
 
                 if started and delimiter:
                     # CommonPrefixes are only generated when there is a delimiter

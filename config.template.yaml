@@ -26,29 +26,34 @@ targets:
   # Exposes s3://janelia-cosem-datasets at /cosem-data
   #
   - name: cosem-data
-    bucket: janelia-cosem-datasets
+    client: aioboto
+    options:
+      bucket: janelia-cosem-datasets
 
   #
   # Exposes s3://janelia-cosem-datasets/aic_desmosome-1 at /cosem-data-with-prefix
+  # using the default client (currently aioboto).
   #
   - name: cosem-data-with-prefix
-    bucket: janelia-cosem-datasets
     prefix: aic_desmosome-1
+    options:
+      bucket: janelia-cosem-datasets
 
   #
-  # Exposes s3://janelia-cosem-datasets at /cosem-data-hidden but makes it unbrowseable
+  # Exposes s3://janelia-cosem-datasets at /cosem-data-hidden
+  # using the default client (currently aioboto) and makes it unbrowseable
   #
   - name: cosem-data-hidden
-    bucket: janelia-cosem-datasets
     hidden: true
-
+    options:
+      bucket: janelia-cosem-datasets
 
   # To serve data from a private bucket, you must configure an access key and secret key as
   # demonstrated below. This example also shows how to use a custom endpoint.
   #
   #- name: multifish
-  #  endpoint: https://s3.us-east-1.lyvecloud.seagate.com/
-  #  bucket: multifish
-  #  credentials:
-  #    accessKeyPath: './var/lyve_access_key'
-  #    secretKeyPath: './var/lyve_secret_key'
+  #  options:
+  #    endpoint: https://s3.us-east-1.lyvecloud.seagate.com/
+  #    bucket: multifish
+  #    access_key_path: './var/lyve_access_key'
+  #    secret_key_path: './var/lyve_secret_key'

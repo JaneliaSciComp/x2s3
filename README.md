@@ -37,27 +37,11 @@ Create a virtualenv and install the dependencies:
 
 ## Create target bucket configuration
 
-Create a `config.yaml` file that contains all of the buckets you want to proxy:
+Create a `config.yaml` file that contains all of the buckets you want to serve. You can get
+started quickly by using the provided example template:
 
-```yaml
-base_url: https://your.domain.org
-targets:
-  - name: scicompsoft-public
-    endpoint: https://s3.us-east-1.lyvecloud.seagate.com/
-    bucket: scicompsoft-public
-    credentials:
-      accessKeyPath: './var/access_key'
-      secretKeyPath: './var/secret_key'
-
-  - name: opendata
-    endpoint: https://internal.hostname/
-    bucket: opendata
-    hidden: true
-
-  - name: scicompsoft
-    endpoint: https://internal.hostname/
-    bucket: scicompsoft
-    prefix: path/to/data
+```bash
+cp config.template.yaml config.yaml
 ```
 
 For each bucket, you can either provide credentials, or it will fallback on anonymous access. Credentials are read from files on disk. You can specify a `prefix` to constrain browsing of a bucket to a given subpath. Set `hidden` to hide the bucket from the main listing -- you may also want to obfuscate the bucket name.
