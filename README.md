@@ -32,7 +32,7 @@ S3 features omitted:
 
 # Getting Started
 
-### Install dependencies
+## 1. Install dependencies
 
 Create a virtualenv and install the dependencies:
 
@@ -40,7 +40,7 @@ Create a virtualenv and install the dependencies:
     source env/bin/activate
     pip install -r requirements.txt
 
-## Create target bucket configuration
+## 2. Create target bucket configuration
 
 Create a `config.yaml` file that contains all of the buckets you want to serve. You can get
 started quickly by using the provided example template:
@@ -52,7 +52,7 @@ cp config.template.yaml config.yaml
 See the [documentation](docs/Config.md) for more information about the configuration file.
 
 
-## Run server
+## 3. Run server
 
 The service is written using FastAPI and runs inside of Uvicorn. You can start a dev server quickly with the `run.py` script:
 
@@ -73,8 +73,6 @@ uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --workers 8 --access-log --ssl-k
 ```
 
 # Production Deployment
-
-## Running inside a Docker container
 
 For production deployments, we recommend using an orchestrator (like Docker Compose) to run the prebuilt Docker container along with an Nginx reverse proxy which provides caching and TLS termination.
 
@@ -108,4 +106,5 @@ See the [documentation](docs/Development.md) for more information about developm
 
 # Attributions
 
-Proxy icons created by <a href="https://www.flaticon.com/free-icons/proxy" title="proxy icons">Uniconlabs - Flaticon</a>
+* Proxy icons created by [Uniconlabs - Flaticon](https://www.flaticon.com/free-icons/proxy)
+* [AWS S3 API](https://docs.aws.amazon.com/AmazonS3/latest/API/Type_API_Reference.html) Reference
