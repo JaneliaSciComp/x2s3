@@ -1,6 +1,11 @@
-# jproxy
+# x2s3
 
-![Python CI](https://github.com/JaneliaSciComp/jproxy/actions/workflows/python-ci.yml/badge.svg)
+![Python CI](https://github.com/JaneliaSciComp/x2s3/actions/workflows/python-ci.yml/badge.svg)
+
+<p align="center">
+    <img src="https://github.com/JaneliaSciComp/x2s3/docs/use_cases.png">
+</p>
+
 
 This is a minimal proxy server to make data sets on S3-compatible interfaces (AWS S3, Seagate Lyve, VAST S3, etc.) available pubicly. It was built to support NGFF viewers such as [N5 Viewer](https://github.com/saalfeldlab/n5-viewer) (BigDataViewer) and [Neuroglancer](https://github.com/google/neuroglancer).
 
