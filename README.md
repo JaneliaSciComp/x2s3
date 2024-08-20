@@ -2,20 +2,23 @@
 
 ![Python CI](https://github.com/JaneliaSciComp/x2s3/actions/workflows/python-ci.yml/badge.svg)
 
-Proxy service which makes storage systems available with an S3-compatible REST API. It was built to support cloud-compatible viewers such as [N5 Viewer](https://github.com/saalfeldlab/n5-viewer) (BigDataViewer) and [Neuroglancer](https://github.com/google/neuroglancer).
+RESTful web service which makes any storage system *X* available as an S3-compatible REST API. It was initially built to support cloud-compatible microscopy image viewers such as [N5 Viewer](https://github.com/saalfeldlab/n5-viewer) (BigDataViewer) and [Neuroglancer](https://github.com/google/neuroglancer).
+
+At Janelia, we use **x2s3** to make private buckets on Seagate Lyve appear public, and to proxy internal resources (e.g. VAST S3). It can also be used as a pop-up file service for quickly viewing local images in BigDataViewer or Neuroglancer.
 
 <p align="center">
     <img src="https://raw.githubusercontent.com/JaneliaSciComp/x2s3/main/docs/use_cases.png">
 </p>
 
-Features:
+# Features
+
 * Extensible support for backend storage systems
 * Web-based file browser
 * Hidden buckets
 * Hidden prefixes
-* Object streaming
+* Non-blocking object streaming
 
-Inspired by S3 proxies such as [oxyno-zeta/s3-proxy](https://github.com/oxyno-zeta/s3-proxy) and [pottava/aws-s3-proxy](https://github.com/pottava/aws-s3-proxy), this service implements enough of the AWS S3 HTTP API to be useable by AWS clients, such as the one in BigDataViewer.
+Inspired by S3 proxies such as [oxyno-zeta/s3-proxy](https://github.com/oxyno-zeta/s3-proxy) and [pottava/aws-s3-proxy](https://github.com/pottava/aws-s3-proxy), this service goes a step further to implement enough of the [AWS S3 API](https://docs.aws.amazon.com/AmazonS3/latest/API/Type_API_Reference.html) to be useable by AWS clients, such as  BigDataViewer.
 
 S3 endpoints implemented:
 * [GetBucketAcl](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketAcl.html)
@@ -30,28 +33,9 @@ S3 features omitted:
 * RequestPayer
 * etc.
 
-# Running the service
+# Running
 
-The simplest way to run the service is to use Docker:
-
-```bash
-docker run -it -p 8000:8000 -v ./config.template.yaml:/app/x2s3/config.yaml ghcr.io/janeliascicomp/x2s3:latest
-```
-
-## Development mode
-
-1. Install dependencies
-
-Create a virtualenv and install the dependencies:
-
-    virtualenv env
-    source env/bin/activate
-    pip install -r requirements.txt
-
-2. Create target bucket configuration
-
-Create a `config.yaml` file that contains all of the buckets you want to serve. You can get
-started quickly by using the provided example template:
+Create a `config.yaml` file that contains all of the buckets you want to serve. You can get started quickly by using the provided example template:
 
 ```bash
 cp config.template.yaml config.yaml
@@ -59,26 +43,14 @@ cp config.template.yaml config.yaml
 
 See the [documentation](docs/Config.md) for more information about the configuration file.
 
-
-3. Run server
-
-The service is written using FastAPI and runs inside of Uvicorn. You can start a dev server quickly with the `run.py` script:
+The simplest way to run the service is to use Docker:
 
 ```bash
-./run.py --port 8000
+docker run -it -p 8000:8000 -v ./config.yaml:/app/x2s3/config.yaml ghcr.io/janeliascicomp/x2s3:latest
 ```
 
-This is equivalent to:
+You can also run the service with Python/Uvicorn directly. See the [development documentation](docs/Development.md) for more information on setting that up.
 
-```bash
-uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --workers 1 --access-log --reload
-```
-
-You can specify TLS certificates and increase the number of workers in order to scale the service for production usage:
-
-```bash
-uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --workers 8 --access-log --ssl-keyfile /opt/tls/cert.key --ssl-certfile /opt/tls/cert.crt
-```
 
 ## Production Deployment
 
@@ -107,7 +79,7 @@ cd docker/
 docker compose up -d
 ```
 
-# Documentation
+# Additional Documentation
 
 * [Configuation](docs/Config.md) - how to use `config.yaml` to configure the service
 * [Development](docs/Development.md) - notes on developing the service codebase
