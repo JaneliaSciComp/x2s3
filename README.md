@@ -30,9 +30,17 @@ S3 features omitted:
 * RequestPayer
 * etc.
 
-# Getting Started
+# Running the service
 
-## 1. Install dependencies
+The simplest way to run the service is to use Docker:
+
+```bash
+docker run -it -p 8000:8000 -v ./config.template.yaml:/app/x2s3/config.yaml ghcr.io/janeliascicomp/x2s3:latest
+```
+
+## Development mode
+
+1. Install dependencies
 
 Create a virtualenv and install the dependencies:
 
@@ -40,7 +48,7 @@ Create a virtualenv and install the dependencies:
     source env/bin/activate
     pip install -r requirements.txt
 
-## 2. Create target bucket configuration
+2. Create target bucket configuration
 
 Create a `config.yaml` file that contains all of the buckets you want to serve. You can get
 started quickly by using the provided example template:
@@ -52,7 +60,7 @@ cp config.template.yaml config.yaml
 See the [documentation](docs/Config.md) for more information about the configuration file.
 
 
-## 3. Run server
+3. Run server
 
 The service is written using FastAPI and runs inside of Uvicorn. You can start a dev server quickly with the `run.py` script:
 
@@ -72,7 +80,7 @@ You can specify TLS certificates and increase the number of workers in order to 
 uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --workers 8 --access-log --ssl-keyfile /opt/tls/cert.key --ssl-certfile /opt/tls/cert.crt
 ```
 
-# Production Deployment
+## Production Deployment
 
 For production deployments, we recommend using an orchestrator (like Docker Compose) to run the prebuilt Docker container along with an Nginx reverse proxy which provides caching and TLS termination.
 
@@ -101,7 +109,8 @@ docker compose up -d
 
 # Documentation
 
-See the [documentation](docs/Development.md) for more information about development.
+* [Configuation](docs/Config.md) - how to use `config.yaml` to configure the service
+* [Development](docs/Development.md) - notes on developing the service codebase
 
 
 # Attributions

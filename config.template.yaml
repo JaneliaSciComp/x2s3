@@ -20,7 +20,7 @@ targets:
   - name: local_files
     client: file
     options:
-      root: .
+      path: .
 
   #
   # Exposes s3://janelia-cosem-datasets at /cosem-data

@@ -22,4 +22,6 @@ docker build . --build-arg GIT_TAG=$VERSION -t ghcr.io/janeliascicomp/x2s3:$VERS
 
 ```bash
 docker push ghcr.io/janeliascicomp/x2s3:$VERSION
+docker tag ghcr.io/janeliascicomp/x2s3:$VERSION ghcr.io/janeliascicomp/x2s3:latest
+docker push ghcr.io/janeliascicomp/x2s3:latest
 ```
