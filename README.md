@@ -18,7 +18,7 @@ At Janelia, we use **x2s3** to make private buckets on Seagate Lyve appear publi
 * Hidden prefixes
 * Non-blocking object streaming
 
-Inspired by S3 proxies such as [oxyno-zeta/s3-proxy](https://github.com/oxyno-zeta/s3-proxy) and [pottava/aws-s3-proxy](https://github.com/pottava/aws-s3-proxy), this service goes a step further to implement enough of the [AWS S3 API](https://docs.aws.amazon.com/AmazonS3/latest/API/Type_API_Reference.html) to be useable by AWS clients, such as  BigDataViewer.
+Inspired by S3 proxies such as [oxyno-zeta/s3-proxy](https://github.com/oxyno-zeta/s3-proxy) and [pottava/aws-s3-proxy](https://github.com/pottava/aws-s3-proxy), this service goes a step further to implement enough of the [AWS S3 API](https://docs.aws.amazon.com/AmazonS3/latest/API/Type_API_Reference.html) to be useable by AWS clients, such as  BigDataViewer. The S3 proxy implements which do this well (e.g. [gaul/s3proxy](https://github.com/gaul/s3proxy)) only proxy a single bucket at a time.
 
 S3 endpoints implemented:
 * [GetBucketAcl](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketAcl.html)
