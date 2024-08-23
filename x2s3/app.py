@@ -22,7 +22,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["GET","HEAD"],
-    allow_headers=["Content-Type"],
+    allow_headers=["*"],
 )
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -215,8 +215,12 @@ async def target_dispatcher(request: Request,
     if not target_name or (is_virtual and target_name=='www'):
         # Return target index
         bucket_list = { target: f"/{target}/" for target in app.settings.get_browseable_targets()}
-        return templates.TemplateResponse("index.html", {"request": request, "links": bucket_list})
-
+        if app.settings.ui:
+            return templates.TemplateResponse("index.html", {"request": request, "links": bucket_list})
+        else:
+            xml = get_bucket_list_xml(bucket_list)
+            return Response(content=xml, status_code=200, media_type="application/xml")
+    
     target_config = app.settings.get_target_config(target_name)
     if not target_config:
         return get_nosuchbucket_response(target_name)
@@ -239,10 +243,13 @@ async def target_dispatcher(request: Request,
             return await client.get_object(target_path)
 
     if not target_path or target_path.endswith("/"):
-        return await browse_bucket(request, target_name, target_path,
-            continuation_token=continuation_token,
-            max_keys=100,
-            is_virtual=is_virtual)
+        if app.settings.ui:
+            return await browse_bucket(request, target_name, target_path,
+                continuation_token=continuation_token,
+                max_keys=100,
+                is_virtual=is_virtual)
+        else:
+            return get_nosuchbucket_response(target_name)
     else:
         return await client.get_object(target_path)
 
