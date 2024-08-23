@@ -1,7 +1,9 @@
 import inspect
-from datetime import datetime, timezone
+import urllib
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from mimetypes import guess_type
+
 from dateutil import parser
 from fastapi.responses import Response
 
@@ -59,9 +61,19 @@ def parse_xml(xml):
     return ET.fromstring(xml)
 
 
+def url_encode(s):
+    if not s: return None
+    # AWS does something slightly strange here, maybe like this?
+    return urllib.parse.quote(s).replace('%20','+')
+
+
 def get_list_xml_elem(contents, common_prefixes, **kwargs):
     """ Creates S3-style XML elements for the given object listing.
     """
+
+    is_url_encode = False
+    if 'EncodingType' in kwargs:
+        is_url_encode = kwargs['EncodingType']=='url'
 
     root = ET.Element("ListBucketResult")
 
@@ -79,17 +91,26 @@ def get_list_xml_elem(contents, common_prefixes, **kwargs):
     ]
 
     for key in keys:
-        add_telem(root, key, kwargs.get(key))
+        value = kwargs.get(key)
+        if is_url_encode and key in ['Delimiter', 'Prefix', 'Key', 'StartAfter']:
+            value = url_encode(value)
+        add_telem(root, key, value)
 
     if common_prefixes:
         for cp in common_prefixes:
+            value = cp
+            if is_url_encode:
+                value = url_encode(value)
             common_prefixes_elem = add_elem(root, "CommonPrefixes")
-            add_telem(common_prefixes_elem, "Prefix", cp)
+            add_telem(common_prefixes_elem, "Prefix", value)
 
     if contents:
         for obj in contents:
+            key = obj["Key"]
+            if is_url_encode:
+                key = url_encode(key)
             contents_elem = add_elem(root, "Contents")
-            add_telem(contents_elem, "Key", obj["Key"])
+            add_telem(contents_elem, "Key", key)
             add_telem(contents_elem, "ETag", obj.get("ETag"))
             add_telem(contents_elem, "Size", obj.get("Size"))
             add_telem(contents_elem, "LastModified", obj.get("LastModified"))
