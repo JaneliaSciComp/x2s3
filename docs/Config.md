@@ -4,6 +4,7 @@ The `config.yaml` file configures the service.
 
 * `base_url`: The base URL for your service. Only needed when using virtual-host-styler addressing, like 'https://bucketname.yourdomain.org'
 * `log_level`: The logging level (ERROR, WARNING, INFO, DEBUG, TRACE)
+* `ui`: By default, the root shows an HTML UI listing of the buckets, with navigation. This disables the UI and restores the [ListBuckets](https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBuckets.html) functionality at the root.
 * `targets`: Ordered list of storage location targets to serve
 
 Each target may have the following properties:

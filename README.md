@@ -13,7 +13,7 @@ At Janelia, we use **x2s3** to make private buckets on Seagate Lyve appear publi
 # Features
 
 * Extensible support for backend storage systems
-* Web-based file browser
+* Optional web-based bucket explorer
 * Hidden buckets
 * Hidden prefixes
 * Non-blocking object streaming
@@ -22,8 +22,9 @@ Inspired by S3 proxies such as [oxyno-zeta/s3-proxy](https://github.com/oxyno-ze
 
 S3 endpoints implemented:
 * [GetBucketAcl](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketAcl.html)
-* [HeadObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html)
 * [GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)
+* [HeadObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html)
+* [ListBuckets](https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBuckets.html)
 * [ListObjectsV2](https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html)
 
 S3 features omitted:

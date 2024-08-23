@@ -9,6 +9,11 @@
 #
 log_level: INFO
 
+#
+# Disable this to remove the web-based UI and list buckets at the root. 
+#
+ui: true
+
 #--------------------------------------------------------------------------------------
 # The list of target storage locations to serve
 #--------------------------------------------------------------------------------------
