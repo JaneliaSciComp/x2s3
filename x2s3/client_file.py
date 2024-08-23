@@ -133,11 +133,10 @@ class FileProxyClient(ProxyClient):
                 'StartAfter': start_after
             }
 
-            root = get_list_xml_elem(contents, common_prefixes, **kwargs)
-            return Response(content=elem_to_str(root), media_type="application/xml")
+            xml = get_list_xml(contents, common_prefixes, **kwargs)
+            return Response(content=xml, media_type="application/xml")
 
         except Exception as e:
-            print(e)
             return handle_exception(e, key=prefix)
 
 

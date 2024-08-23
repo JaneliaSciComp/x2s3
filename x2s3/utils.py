@@ -67,7 +67,19 @@ def url_encode(s):
     return urllib.parse.quote(s).replace('%20','+')
 
 
-def get_list_xml_elem(contents, common_prefixes, **kwargs):
+def get_bucket_list_xml(buckets):
+    
+    root = ET.Element("ListAllMyBucketsResult")
+    buckets_elem = add_elem(root, "Buckets")
+
+    for bucket in buckets:
+        bucket_elem = add_elem(buckets_elem, "Bucket")
+        add_telem(bucket_elem, "Name", bucket)
+
+    return elem_to_str(root)
+
+
+def get_list_xml(contents, common_prefixes, **kwargs):
     """ Creates S3-style XML elements for the given object listing.
     """
 
@@ -116,7 +128,7 @@ def get_list_xml_elem(contents, common_prefixes, **kwargs):
             add_telem(contents_elem, "LastModified", obj.get("LastModified"))
             add_telem(contents_elem, "StorageClass", obj.get("StorageClass"))
 
-    return root
+    return elem_to_str(root)
 
 
 def format_timestamp_s3(timestamp):

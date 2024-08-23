@@ -189,10 +189,8 @@ class AiobotoProxyClient(ProxyClient):
                     'StartAfter': start_after
                 }
 
-                root = get_list_xml_elem(contents, common_prefixes, **kwargs)
-
-                xml_output = elem_to_str(root)
-                return Response(content=xml_output, media_type="application/xml")
+                xml = get_list_xml(contents, common_prefixes, **kwargs)
+                return Response(content=xml, media_type="application/xml")
 
             except Exception as e:
                 return handle_s3_exception(e, key=prefix)

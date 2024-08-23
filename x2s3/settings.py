@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     targets: List[Target] = []
     target_map: Dict[str, Target] = {}
     log_level: str = 'INFO'
+    ui: bool = True
 
     model_config = SettingsConfigDict(
         yaml_file="config.yaml",
