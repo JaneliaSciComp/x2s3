@@ -41,7 +41,7 @@ class FileProxyClient(ProxyClient):
             path = os.path.join(self.root_path, key)
             if not os.path.isfile(path):
                 return get_nosuchkey_response(key)
-            
+
             filename = os.path.basename(path)
             headers = {}
 
@@ -69,7 +69,7 @@ class FileProxyClient(ProxyClient):
             path = os.path.join(self.root_path, key)
             if not os.path.isfile(path):
                 return get_nosuchkey_response(key)
-            
+
             filename = os.path.basename(path)
             headers = {}
 

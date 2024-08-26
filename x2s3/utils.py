@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from mimetypes import guess_type
 
+from loguru import logger
 from dateutil import parser
 from fastapi.responses import Response
 
@@ -135,7 +136,7 @@ def format_timestamp_s3(timestamp):
     """ Format the given timestamp to ISO date format compatible with AWS S3.
     """
     dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-    return f"{dt.isoformat().split('+')[0][:-3]}Z"
+    return dt.isoformat()
 
 
 def format_isoformat_as_local(isodate):
