@@ -189,7 +189,6 @@ async def browse_bucket(request: Request,
     })
 
 
-
 @app.get('/favicon.ico', include_in_schema=False)
 async def favicon():
     return FileResponse('static/favicon.ico')
@@ -203,7 +202,6 @@ def robots():
 @app.get("/{path:path}")
 async def target_dispatcher(request: Request,
                             path: str,
-                            acl: str = Query(None),
                             list_type: int = Query(None, alias="list-type"),
                             continuation_token: Optional[str] = Query(None, alias="continuation-token"),
                             delimiter: Optional[str] = Query(None, alias="delimiter"),
@@ -233,7 +231,7 @@ async def target_dispatcher(request: Request,
     if client is None:
         raise HTTPException(status_code=500, detail="Client for target bucket not found")
 
-    if acl is not None:
+    if 'acl' in request.query_params:
         return get_read_access_acl()
 
     if list_type:
