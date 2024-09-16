@@ -22,19 +22,28 @@ def get_settings():
     return settings
 
 
+import multiprocessing
+import uvicorn
+
 @pytest.fixture(scope="module")
 def app(get_settings):
     app = create_app(get_settings)
-    process = subprocess.Popen(["uvicorn", "x2s3.app:app", "--host", "0.0.0.0", "--port", str(PORT)])
+    
+    def run_server():
+        uvicorn.run(app, host="0.0.0.0", port=PORT)
+    
+    process = multiprocessing.Process(target=run_server)
+    process.start()
     time.sleep(2)  # Give the server a moment to start
     yield app
     process.terminate()
+    process.join()
 
 
 @pytest.fixture
 def s3_client():
     # Avoid "botocore.exceptions.NoCredentialsError: Unable to locate credentials" by giving dummy credentials
-    return boto3.client('s3', endpoint_url=f"http://0.0.0.0:{PORT}", region_name='us-east-1', aws_access_key_id='NONE', aws_secret_access_key='NONE')
+    return boto3.client('s3', endpoint_url=f"http://localhost:{PORT}", region_name='us-east-1', aws_access_key_id='NONE', aws_secret_access_key='NONE')
 
 
 def test_acl(app, s3_client):
