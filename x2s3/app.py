@@ -179,6 +179,7 @@ async def browse_bucket(request: Request,
     return templates.TemplateResponse("browse.html", {
         "request": request,
         "prefix": prefix,
+        "index_url": app.settings.base_url or '/',
         "target_prefix": target_prefix,
         "common_prefixes": common_prefixes,
         "contents": contents,
