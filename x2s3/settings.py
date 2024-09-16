@@ -40,8 +40,11 @@ class Settings(BaseSettings):
 
     def __init__(self, **data) -> None:
         super().__init__(**data)
-        self.target_map = {t.name.lower(): t for t in self.targets}
 
+
+    def get_target_map(self):
+        return {t.name.lower(): t for t in self.targets}
+    
 
     def get_browseable_targets(self):
         return [target.name for target in self.targets if target.browseable]
@@ -50,8 +53,9 @@ class Settings(BaseSettings):
     def get_target_config(self, name):
         if name:
             key = name.lower()
-            if key in self.target_map:
-                return self.target_map[key]
+            target_map = self.get_target_map()
+            if key in target_map:
+                return target_map[key]
         return None
 
         

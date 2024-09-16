@@ -1,62 +1,70 @@
 import urllib.parse
 
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import HttpUrl
 from loguru import logger
 
 from xml.etree.ElementTree import Element
-from x2s3.app import app
-from x2s3.settings import Target, get_settings
+from x2s3.app import create_app
+from x2s3.settings import Target, Settings
 from x2s3.utils import parse_xml
 
-settings = get_settings()
-settings.base_url = HttpUrl('http://testserver')
-settings.virtual_buckets = True
-settings.targets = [
-    Target(
-        name='janelia-data-examples',
-        options={'bucket':'janelia-data-examples'}
-    ),
-    Target(
-        name='with-prefix',
-        options={
-            'bucket':'janelia-data-examples',
-            'prefix':'jrc_mus_lung_covid.n5/'
-        }
-    ),
-    Target(
-        name='hidden-with-endpoint',
-        browseable=False,
-        options={
-            'bucket':'janelia-data-examples',
-            'endpoint':'https://s3.amazonaws.com',
-        }
-    )
-]
-settings.target_map = {t.name.lower(): t for t in settings.targets}
+@pytest.fixture
+def get_settings():
+    settings = Settings()
+    settings.base_url = HttpUrl('http://testserver')
+    settings.virtual_buckets = True
+    settings.targets = [
+        Target(
+            name='janelia-data-examples',
+            options={'bucket':'janelia-data-examples'}
+        ),
+        Target(
+            name='with-prefix',
+            options={
+                'bucket':'janelia-data-examples',
+                'prefix':'jrc_mus_lung_covid.n5/'
+            }
+        ),
+        Target(
+            name='hidden-with-endpoint',
+            browseable=False,
+            options={
+                'bucket':'janelia-data-examples',
+                'endpoint':'https://s3.amazonaws.com',
+            }
+        )
+    ]
+    return settings
 
 
-def test_acl():
+@pytest.fixture
+def app(get_settings):
+    return create_app(get_settings)
+
+
+def test_acl(app):
     with TestClient(app) as client:
         response = client.get(f"/janelia-data-examples?acl")
         assert response.status_code == 200
         assert response.headers['content-type'] == "application/xml"
+        assert response.text.count("<Grant>") == 1
 
 
-def test_get_html_root():
+def test_get_html_root(app):
     with TestClient(app) as client:
         response = client.get("/")
         assert response.status_code == 200
         assert response.headers['content-type'].startswith("text/html")
-        logger.info(response.text)
-        for target in settings.targets:
+        for target in app.settings.targets:
             if target.browseable:
                 assert target.name in response.text
             else:
                 assert target.name not in response.text
 
 
-def test_get_html_listing():
+def test_get_html_listing(app):
     with TestClient(app) as client:
         response = client.get("/janelia-data-examples/jrc_mus_lung_covid.n5/")
         assert response.status_code == 200
@@ -66,7 +74,7 @@ def test_get_html_listing():
         assert 'attributes.json' in response.text
 
 
-def test_list_objects():
+def test_list_objects(app):
     with TestClient(app) as client:
         bucket_name = 'janelia-data-examples'
         max_keys = 7
@@ -90,7 +98,7 @@ def test_list_objects():
         assert isinstance(contents[0].find('LastModified'), Element)
 
 
-def test_list_objects_delimiter():
+def test_list_objects_delimiter(app):
     with TestClient(app) as client:
         bucket_name = 'janelia-data-examples'
         max_keys = 9
@@ -104,7 +112,7 @@ def test_list_objects_delimiter():
         assert root.find('IsTruncated').text == "false"
 
 
-def test_list_objects_continuation():
+def test_list_objects_continuation(app):
     with TestClient(app) as client:
         bucket_name = 'janelia-data-examples'
         max_keys = 4
@@ -146,7 +154,7 @@ def test_list_objects_continuation():
         assert total == 6
 
 
-def test_head_object():
+def test_head_object(app):
     with TestClient(app) as client:
         response = client.head("/janelia-data-examples/jrc_mus_lung_covid.n5/attributes.json")
         assert response.status_code == 200
@@ -154,7 +162,7 @@ def test_head_object():
         assert response.status_code == 404
 
 
-def test_prefixed_head_object():
+def test_prefixed_head_object(app):
     with TestClient(app) as client:
         response = client.head("/with-prefix/attributes.json")
         assert response.status_code == 200
@@ -164,7 +172,7 @@ def test_prefixed_head_object():
         assert response.status_code == 404
 
 
-def test_get_object():
+def test_get_object(app):
     with TestClient(app) as client:
         response = client.get("/janelia-data-examples/jrc_mus_lung_covid.n5/attributes.json")
         assert response.status_code == 200
@@ -172,7 +180,7 @@ def test_get_object():
         assert 'n5' in json_obj
 
 
-def test_prefixed_get_object():
+def test_prefixed_get_object(app):
     with TestClient(app) as client:
         response = client.get("/with-prefix/attributes.json")
         assert response.status_code == 200
@@ -180,7 +188,7 @@ def test_prefixed_get_object():
         assert 'n5' in json_obj
 
 
-def test_virtual_host_get_object():
+def test_virtual_host_get_object(app):
     with TestClient(app) as client:
         response = client.get("/jrc_mus_lung_covid.n5/attributes.json",
             headers={'Host':'janelia-data-examples.testserver'})
@@ -189,7 +197,7 @@ def test_virtual_host_get_object():
         assert 'n5' in json_obj
 
 
-def test_prefixed_list_objects():
+def test_prefixed_list_objects(app):
     with TestClient(app) as client:
         bucket_name = 'with-prefix'
         response = client.get(f"/{bucket_name}?list-type=2&delimiter=/")
@@ -202,7 +210,7 @@ def test_prefixed_list_objects():
         assert root.find('IsTruncated').text == "false"
 
 
-def test_get_object_hidden():
+def test_get_object_hidden(app):
     with TestClient(app) as client:
         response = client.get("/hidden-with-endpoint/jrc_mus_lung_covid.n5/attributes.json")
         assert response.status_code == 200
@@ -210,14 +218,14 @@ def test_get_object_hidden():
         assert 'n5' in json_obj
 
 
-def test_get_object_missing():
+def test_get_object_missing(app):
     with TestClient(app) as client:
         response = client.get("/janelia-data-examples/missing")
         assert response.status_code == 404
         assert response.headers['content-type'] == "application/xml"
 
 
-def test_bucket_missing():
+def test_bucket_missing(app):
     with TestClient(app) as client:
         response = client.get("/missing/attributes.json")
         assert response.status_code == 404
@@ -226,14 +234,14 @@ def test_bucket_missing():
         assert root.find('Code').text == 'NoSuchBucket'
         
 
-def test_list_objects_error():
+def test_list_objects_error(app):
     with TestClient(app) as client:
         response = client.get(f"/janelia-data-examples?list-type=2&max-keys=aaa")
         assert response.status_code == 400
         assert response.headers['content-type'] == "application/json"
 
 
-def test_get_object_precedence():
+def test_get_object_precedence(app):
     with TestClient(app) as client:
         response = client.get(f"/janelia-data-examples/jrc_mus_lung_covid.n5/attributes.json?list-type=2")
         assert response.status_code == 200
