@@ -32,7 +32,6 @@ class FileProxyClient(ProxyClient):
     def __init__(self, proxy_kwargs, **kwargs):
         self.proxy_kwargs = proxy_kwargs or {}
         self.target_name = self.proxy_kwargs['target_name']
-        self.target_prefix = kwargs.get('prefix') # Not very useful and may be removed in the future
         self.root_path = str(Path(kwargs['path']).resolve())
 
     @override
@@ -62,9 +61,6 @@ class FileProxyClient(ProxyClient):
 
     @override
     async def get_object(self, key: str):
-        if self.target_prefix:
-            key = os.path.join(self.target_prefix, key) if key else self.target_prefix
-
         try:
             path = os.path.join(self.root_path, key)
             if not os.path.isfile(path):
@@ -101,8 +97,6 @@ class FileProxyClient(ProxyClient):
 
         # prefix user-supplied prefix with configured prefix
         real_prefix = prefix
-        if self.target_prefix:
-            real_prefix = os.path.join(self.target_prefix, prefix) if prefix else self.target_prefix
 
         # ensure the prefix ends with a slash
         if real_prefix and not real_prefix.endswith('/'):
@@ -180,7 +174,7 @@ class FileProxyClient(ProxyClient):
                             etag = f'"{calc_etag(file_path, 8388608)}"'
 
                         contents.append({
-                            'Key': remove_prefix(self.target_prefix, key),
+                            'Key': key,
                             'Size': str(file_size),
                             'ETag': etag,
                             'LastModified': format_timestamp_s3(stats.st_mtime),
@@ -191,7 +185,6 @@ class FileProxyClient(ProxyClient):
                     # CommonPrefixes are only generated when there is a delimiter
                     for d in dirs:
                         common_prefix = dir_path(os.path.join(p, d))
-                        common_prefix = remove_prefix(self.target_prefix, common_prefix)
                         commons.add(common_prefix)
 
                 if delimiter=='/':
