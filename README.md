@@ -2,7 +2,7 @@
 
 ![Python CI](https://github.com/JaneliaSciComp/x2s3/actions/workflows/python-ci.yml/badge.svg)
 
-RESTful web service which makes any storage system *X* available as an S3-compatible REST API. It was initially built to support cloud-compatible microscopy image viewers such as [N5 Viewer](https://github.com/saalfeldlab/n5-viewer) (BigDataViewer) and [Neuroglancer](https://github.com/google/neuroglancer).
+RESTful web service which makes any storage system *X* available as an S3-compatible REST API, hence the name "X to S3". It was initially built to support cloud-compatible microscopy image viewers such as [N5 Viewer](https://github.com/saalfeldlab/n5-viewer) (BigDataViewer) and [Neuroglancer](https://github.com/google/neuroglancer).
 
 At Janelia, we use **x2s3** to make private buckets on Seagate Lyve appear public, and to proxy internal resources (e.g. VAST S3). It can also be used as a pop-up file service for quickly viewing local images in BigDataViewer or Neuroglancer.
 
@@ -15,7 +15,7 @@ At Janelia, we use **x2s3** to make private buckets on Seagate Lyve appear publi
 * Extensible support for backend storage systems
 * Optional web-based bucket explorer
 * Hidden buckets
-* Hidden prefixes
+* Partial buckets (chroot-like prefixes)
 * Non-blocking object streaming
 
 Inspired by S3 proxies such as [oxyno-zeta/s3-proxy](https://github.com/oxyno-zeta/s3-proxy) and [pottava/aws-s3-proxy](https://github.com/pottava/aws-s3-proxy), this service goes a step further to implement enough of the [AWS S3 API](https://docs.aws.amazon.com/AmazonS3/latest/API/Type_API_Reference.html) to be useable by AWS clients, such as  BigDataViewer. The S3 proxy implements which do this well (e.g. [gaul/s3proxy](https://github.com/gaul/s3proxy)) only proxy a single bucket at a time.
