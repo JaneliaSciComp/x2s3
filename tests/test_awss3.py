@@ -3,7 +3,6 @@ import urllib.parse
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import HttpUrl
-from loguru import logger
 
 from xml.etree.ElementTree import Element
 from x2s3.app import create_app
