@@ -23,11 +23,12 @@ class Settings(BaseSettings):
         be passed in the environment or in a .env file. 
     """
 
+    log_level: str = 'INFO'
+    ui: bool = True
+    virtual_buckets: bool = False
     base_url: Optional[HttpUrl] = None
     targets: List[Target] = []
     target_map: Dict[str, Target] = {}
-    log_level: str = 'INFO'
-    ui: bool = True
 
     model_config = SettingsConfigDict(
         yaml_file="config.yaml",

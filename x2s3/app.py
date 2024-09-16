@@ -87,8 +87,11 @@ def get_target(request, path):
     logger.trace(f"request.url.hostname: {request.url.hostname}")
 
     subdomain = None
-    if base_url:
-        subdomain = request.url.hostname.removesuffix(base_url.host).removesuffix('.')
+    if app.settings.virtual_buckets:
+        if base_url:
+            subdomain = request.url.hostname.removesuffix(base_url.host).removesuffix('.')
+        else:
+            logger.warning("virtual_buckets enabled but no base URL is configured")
 
     if subdomain:
         # Target is given in the subdomain

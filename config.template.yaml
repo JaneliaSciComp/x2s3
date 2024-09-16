@@ -1,18 +1,27 @@
 #
-# You need to specify the base URL if you want to use virtual-host-style addressing,
-# like 'https://bucketname.yourdomain.org'
-#
-#base_url: https://yourdomain.org
-
-#
 # Loguru logging level (ERROR, WARNING, INFO, DEBUG, TRACE)
 #
 log_level: INFO
 
 #
-# Disable this to remove the web-based UI and list buckets at the root. 
+# Present an HTML web UI for browsing and downloading files.
+# Disable this to instead expose the ListBuckets API at the root.
 #
 ui: true
+
+#
+# Allow virtual-host-style addressing like 'https://bucketname.yourdomain.org'.
+# Path-based addressing is still supported, like 'https://yourdomain.org/bucketname'.
+# If this is true, then you need to specify the base URL.
+#
+virtual_buckets: true
+
+#
+# Base URL of your deployment, from the point of view of the client.
+#
+#base_url: https://yourdomain.org
+
+
 
 #--------------------------------------------------------------------------------------
 # The list of target storage locations to serve
