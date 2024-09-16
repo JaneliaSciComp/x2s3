@@ -10,8 +10,8 @@ from fastapi.responses import Response, StreamingResponse, JSONResponse
 from x2s3.utils import *
 from x2s3.client import ProxyClient
 
-# This introduced latency and is usually not necessary
-CALCULATE_ETAGS = False
+
+STATIC_ETAG = '"11111111111111111111111111111111"'
 
 def handle_exception(e, key=None):
     """ Handle various cases of generic errors.
@@ -27,12 +27,22 @@ def file_iterator(file_path: Path):
         yield from file
 
 
+# From https://teppen.io/2018/10/23/aws_s3_verify_etags/
+def calc_etag(inputfile, partsize):
+    md5_digests = []
+    with open(inputfile, 'rb') as f:
+        for chunk in iter(lambda: f.read(partsize), b''):
+            md5_digests.append(md5(chunk).digest())
+    return md5(b''.join(md5_digests)).hexdigest() + '-' + str(len(md5_digests))
+
+
 class FileProxyClient(ProxyClient):
 
     def __init__(self, proxy_kwargs, **kwargs):
         self.proxy_kwargs = proxy_kwargs or {}
         self.target_name = self.proxy_kwargs['target_name']
         self.root_path = str(Path(kwargs['path']).resolve())
+        self.calculate_etags = kwargs.get('calculate_etags', False)
 
     @override
     async def head_object(self, key: str):
@@ -167,10 +177,9 @@ class FileProxyClient(ProxyClient):
                         stats = os.stat(file_path)
                         file_size = stats.st_size
 
-                        etag = '"48ed760a742c2263777c00b27df3024c"'
-                        if CALCULATE_ETAGS:
-                            # This is VERY slow because it needs to read every file it 
-                            # the 8388608 part size is used by AWS CLI and boto3
+                        etag = STATIC_ETAG
+                        if self.calculate_etags:
+                            # This is VERY slow because it needs to read every file
                             etag = f'"{calc_etag(file_path, 8388608)}"'
 
                         contents.append({
@@ -197,11 +206,3 @@ class FileProxyClient(ProxyClient):
             'next_token': None,
             'is_truncated': 'false'
         }
-
-# From https://teppen.io/2018/10/23/aws_s3_verify_etags/
-def calc_etag(inputfile, partsize):
-    md5_digests = []
-    with open(inputfile, 'rb') as f:
-        for chunk in iter(lambda: f.read(partsize), b''):
-            md5_digests.append(md5(chunk).digest())
-    return md5(b''.join(md5_digests)).hexdigest() + '-' + str(len(md5_digests))

@@ -21,6 +21,7 @@ Each target may have the following properties:
         * `secret_key_path`: Path to the S3 secret key (for private buckets)
     * *local*: Local filesystem targets. Options:
         * `path`: Path to the root 
+        * `calculate_etags`: If true, then the etags will be calculated by hashing the content of each file. This is much more expensive and may not be needed for all use cases.
 
 For each bucket, you can either provide credentials, or it will fallback on anonymous access. Credentials are read from files on disk. You can specify a `prefix` to constrain browsing of a bucket to a given subpath. Set `hidden` to hide the bucket from the main listing -- you may also want to obfuscate the bucket name.
 
