@@ -1,9 +1,6 @@
-from typing import Annotated
 import urllib.parse
 
-from fastapi import FastAPI, Header, HTTPException
 from fastapi.testclient import TestClient
-from pydantic import BaseModel
 from pydantic import HttpUrl
 from loguru import logger
 
@@ -14,6 +11,7 @@ from x2s3.utils import parse_xml
 
 settings = get_settings()
 settings.base_url = HttpUrl('http://testserver')
+settings.virtual_buckets = True
 settings.targets = [
     Target(
         name='janelia-data-examples',
