@@ -8,6 +8,7 @@ from pydantic import HttpUrl
 from x2s3.app import create_app
 from x2s3.settings import Target, Settings
 
+PORT = 12392
 
 @pytest.fixture(scope="module")
 def get_settings():
@@ -26,7 +27,7 @@ def get_settings():
 @pytest.fixture(scope="module")
 def app(get_settings):
     app = create_app(get_settings)
-    process = subprocess.Popen(["uvicorn", "x2s3.app:app", "--host", "0.0.0.0", "--port", "8000"])
+    process = subprocess.Popen(["uvicorn", "x2s3.app:app", "--host", "0.0.0.0", "--port", str(PORT)])
     time.sleep(2)  # Give the server a moment to start
     yield app
     process.terminate()
@@ -34,7 +35,8 @@ def app(get_settings):
 
 @pytest.fixture
 def s3_client():
-    return boto3.client('s3', endpoint_url='http://localhost:8000')
+    # Avoid "botocore.exceptions.NoCredentialsError: Unable to locate credentials" by giving dummy credentials
+    return boto3.client('s3', endpoint_url=f"http://localhost:{PORT}", region_name='us-east-1', aws_access_key_id='NONE', aws_secret_access_key='NONE')
 
 
 def test_acl(app, s3_client):
