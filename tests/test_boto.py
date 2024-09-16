@@ -13,8 +13,6 @@ PORT = 12392
 @pytest.fixture(scope="module")
 def get_settings():
     settings = Settings()
-    settings.base_url = HttpUrl('http://testserver')
-    settings.virtual_buckets = True
     settings.targets = [
         Target(
             name='janelia-data-examples',
@@ -36,7 +34,7 @@ def app(get_settings):
 @pytest.fixture
 def s3_client():
     # Avoid "botocore.exceptions.NoCredentialsError: Unable to locate credentials" by giving dummy credentials
-    return boto3.client('s3', endpoint_url=f"http://localhost:{PORT}", region_name='us-east-1', aws_access_key_id='NONE', aws_secret_access_key='NONE')
+    return boto3.client('s3', endpoint_url=f"http://0.0.0.0:{PORT}", region_name='us-east-1', aws_access_key_id='NONE', aws_secret_access_key='NONE')
 
 
 def test_acl(app, s3_client):

@@ -13,7 +13,6 @@ from x2s3.utils import parse_xml
 @pytest.fixture
 def get_settings():
     settings = Settings()
-    settings.base_url = HttpUrl('http://testserver')
     settings.targets = [
     ]
     return settings
