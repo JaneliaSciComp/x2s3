@@ -21,7 +21,7 @@ jobs:
         python -m pip install -r requirements.txt
     - name: Test with pytest
       run: |
-        python -m pytest --cov=x2s3 --cov-report=html --cov-report=term -W ignore::DeprecationWarning --html=htmlcov/test_results.html
+        python -m pytest --cov=x2s3 --cov-report=html --cov-report=term -W ignore::DeprecationWarning --html=htmlcov/test_results.html tests/test_awss3.py tests/test_base.py tests/test_file.py
     - name: Upload pytest and coverage results
       uses: actions/upload-artifact@v4
       if: always()
