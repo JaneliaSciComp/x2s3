@@ -14,13 +14,12 @@ ui: true
 # Path-based addressing is still supported, like 'https://yourdomain.org/bucketname'.
 # If this is true, then you need to specify the base URL.
 #
-virtual_buckets: true
+virtual_buckets: false
 
 #
 # Base URL of your deployment, from the point of view of the client.
 #
 #base_url: https://yourdomain.org
-
 
 
 #--------------------------------------------------------------------------------------
