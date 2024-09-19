@@ -73,7 +73,9 @@ def create_app(settings):
                 logger.warning(f"Overriding target key: {target_key}")
 
             app.clients[target_key] = client
-            logger.info(f"Configured target {target_name}")
+            logger.debug(f"Configured target {target_name}")
+
+        logger.info(f"Server ready with {len(app.clients)} targets")
 
 
     def get_client(target_name):
