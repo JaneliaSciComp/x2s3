@@ -24,5 +24,5 @@ services:
       - ${CONFIG_FILE}:/app/x2s3/config.yaml
       - ${VAR_DIR}:/app/x2s3/var
     environment:
-      NUM_WORKERS: 8
+      NUM_WORKERS: ${NUM_WORKERS:-8}
 
