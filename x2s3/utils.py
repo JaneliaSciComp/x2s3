@@ -43,7 +43,7 @@ def add_elem(parent, key):
 def add_telem(parent, key, value):
     """ Add a text element as a child of the given XML parent.
     """
-    if not value: 
+    if not value:
         return None
     elem = add_elem(parent, key)
     elem.text = str(value)
