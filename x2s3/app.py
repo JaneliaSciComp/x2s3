@@ -24,6 +24,7 @@ def create_app(settings):
         allow_credentials=True,
         allow_methods=["GET","HEAD"],
         allow_headers=["*"],
+        expose_headers=["Range", "Content-Range"],
     )
     app.mount("/static", StaticFiles(directory="static"), name="static")
     templates = Jinja2Templates(directory="templates")
