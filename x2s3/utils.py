@@ -164,29 +164,42 @@ def get_nosuchkey_response(key):
 
 def get_nosuchbucket_response(bucket_name):
     return Response(content=inspect.cleandoc(f"""
-    <?xml version="1.0" encoding="UTF-8"?>
-    <Error>
-        <Code>NoSuchBucket</Code>
-        <Message>The specified bucket does not exist</Message>
-        <BucketName>{bucket_name}</BucketName>
-    </Error>
-    """), status_code=404, media_type="application/xml")
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Error>
+            <Code>NoSuchBucket</Code>
+            <Message>The specified bucket does not exist</Message>
+            <BucketName>{bucket_name}</BucketName>
+        </Error>
+        """), status_code=404, media_type="application/xml")
 
 
 def get_accessdenied_response():
     return Response(content=inspect.cleandoc("""
-    <?xml version="1.0" encoding="UTF-8"?>
-    <Error>
-        <Code>AccessDenied</Code>
-        <Message>Access Denied</Message>
-    </Error>
-    """), status_code=403, media_type="application/xml")
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Error>
+            <Code>AccessDenied</Code>
+            <Message>Access Denied</Message>
+        </Error>
+        """), status_code=403, media_type="application/xml")
+
+
+def get_error_response(status_code, error_code, message, resource):
+    return Response(content=inspect.cleandoc(f"""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Error>
+            <Code>{error_code}</Code>
+            <Message>{message}</Message>
+            <Resource>{resource}</Resource>
+        </Error>
+        """),
+        status_code=status_code,
+        media_type="application/xml")
 
 
 def get_read_access_acl():
     """ Returns an S3 ACL that grants full read access
     """
-    acl_xml = """
+    acl_xml = inspect.cleandoc("""
     <AccessControlPolicy>
         <Owner>
             <ID>1</ID>
@@ -201,7 +214,7 @@ def get_read_access_acl():
             </Grant>
         </AccessControlList>
     </AccessControlPolicy>
-    """
+    """)
     return Response(content=acl_xml, media_type="application/xml")
 
 
