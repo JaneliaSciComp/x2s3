@@ -1,6 +1,7 @@
 from typing import List, Dict, Optional
 from functools import cache
 
+from pathlib import Path
 from pydantic import HttpUrl, BaseModel
 from pydantic_settings import (
     BaseSettings,
@@ -27,6 +28,8 @@ class Settings(BaseSettings):
     ui: bool = True
     virtual_buckets: bool = False
     base_url: Optional[HttpUrl] = None
+    local_path: Path = None
+    local_name: str = 'local'
     targets: List[Target] = []
     target_map: Dict[str, Target] = {}
 

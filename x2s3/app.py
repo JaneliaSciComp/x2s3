@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from x2s3.utils import *
 from x2s3 import registry
-from x2s3.settings import get_settings
+from x2s3.settings import get_settings, Target
 
 def create_app(settings):
 
@@ -58,8 +58,20 @@ def create_app(settings):
         for proto in registry.available_protocols():
             logger.trace(f"- {proto}")
 
-        # Configure targets
         app.clients = {}
+
+        # Add local path client if configured
+        if app.settings.local_path:
+            local_target = Target(
+                name=app.settings.local_name,
+                client='file',
+                options={
+                    'path': str(app.settings.local_path),
+                }
+            )
+            app.settings.targets += [local_target]
+
+        # Configure targets
         for target_name in app.settings.get_target_map():
             target_key = target_name.lower()
             target_config = app.settings.get_target_config(target_key)
