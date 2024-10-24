@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     ui: bool = True
     virtual_buckets: bool = False
     base_url: Optional[HttpUrl] = None
-    local_path: Path = None
+    local_path: Optional[Path] = None
     local_name: str = 'local'
     targets: List[Target] = []
     target_map: Dict[str, Target] = {}
