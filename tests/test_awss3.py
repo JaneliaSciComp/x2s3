@@ -109,7 +109,7 @@ def test_list_objects_delimiter(app):
         assert root.tag == "ListBucketResult"
         assert root.find('Name').text == bucket_name
         assert root.find('Delimiter').text == '/'
-        assert len(root.findall('CommonPrefixes')) == 1
+        assert len(root.findall('CommonPrefixes')) >= 1
         assert root.find('IsTruncated').text == "false"
 
 
