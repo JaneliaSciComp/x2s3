@@ -4,24 +4,38 @@ on:
   push:
     branches: [ main ]
 
+# When this workflow is queued, automatically cancel any previous running
+# or pending jobs from the same branch
+concurrency:
+  group: conda-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
+    
     runs-on: ubuntu-latest
+    
     strategy:
       matrix:
         python-version: ["3.10"]
+    
     steps:
+    
     - uses: actions/checkout@v4
+    
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
+    
     - name: Install dependencies
       run: |
         python -m pip install -r requirements.txt
+    
     - name: Test with pytest
       run: |
         python -m pytest --cov=x2s3 --cov-report=html --cov-report=term -W ignore::DeprecationWarning --html=htmlcov/test_results.html
+    
     - name: Upload pytest and coverage results
       uses: actions/upload-artifact@v4
       if: always()
