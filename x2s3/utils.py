@@ -100,7 +100,7 @@ def get_list_xml(contents, common_prefixes, **kwargs):
         'IsTruncated',
         'ContinuationToken',
         'NextContinuationToken',
-        'StartAfter,'
+        'StartAfter'
     ]
 
     for key in keys:
