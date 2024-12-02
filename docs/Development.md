@@ -8,10 +8,10 @@ Create a virtualenv and install the dependencies:
     source env/bin/activate
     pip install -r requirements.txt
 
-The service is written using FastAPI and runs inside of Uvicorn. You can start a dev server quickly with the `run.py` helper script:
+The service is written using FastAPI and runs inside of Uvicorn. You can start a dev server quickly with the `run.sh` helper script:
 
 ```bash
-./run.py --port 8000
+./run.sh
 ```
 
 This is equivalent to running Uvicorn directly, like this:
