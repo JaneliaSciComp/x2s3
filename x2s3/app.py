@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from x2s3.utils import *
-from x2s3 import registry
+from x2s3 import client_registry
 from x2s3.settings import get_settings, Target
 
 def create_app(settings):
@@ -55,7 +55,7 @@ def create_app(settings):
         logger.add(sys.stderr, level=app.settings.log_level)
 
         logger.trace("Available protocols:")
-        for proto in registry.available_protocols():
+        for proto in client_registry.available_protocols():
             logger.trace(f"- {proto}")
 
         app.clients = {}
@@ -79,7 +79,7 @@ def create_app(settings):
                 'target_name': target_name,
             }
 
-            client = registry.client(target_config.client,
+            client = client_registry.client(target_config.client,
                 proxy_kwargs, **target_config.options)
 
             if target_key in app.clients:
