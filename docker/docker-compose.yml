@@ -15,7 +15,7 @@ services:
       - ${NGINX_CACHE_DIR}:/var/cache/nginx
 
   x2s3:
-    image: ghcr.io/janeliascicomp/x2s3:0.6.0
+    image: ghcr.io/janeliascicomp/x2s3:0.7.0
     container_name: x2s3
     restart: unless-stopped
     ports:
