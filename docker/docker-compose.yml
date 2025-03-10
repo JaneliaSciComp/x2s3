@@ -13,6 +13,9 @@ services:
       - ./include:/etc/nginx/conf
       - ${CERT_DIR}:/certs:ro
       - ${NGINX_CACHE_DIR}:/var/cache/nginx
+    logging:
+      options:
+        max-size: "128m"
 
   x2s3:
     image: ghcr.io/janeliascicomp/x2s3:0.7.0
@@ -25,4 +28,7 @@ services:
       - ${VAR_DIR}:/app/x2s3/var
     environment:
       NUM_WORKERS: ${NUM_WORKERS:-8}
+    logging:
+      options:
+        max-size: "128m"
 
