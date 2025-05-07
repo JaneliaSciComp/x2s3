@@ -62,5 +62,4 @@ typing_extensions==4.13.2
 urllib3==2.4.0
 uvicorn==0.34.2
 wrapt==1.17.2
--e git+ssh://git@github.com/JaneliaSciComp/x2s3.git@9785732dd55f899f1f797c3954dc4b6741fdb2a3#egg=x2s3
 yarl==1.20.0
