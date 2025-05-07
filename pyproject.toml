@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "x2s3"
+version = "0.8.0"
+description = "RESTful web service which makes any storage system X available as an S3-compatible REST API"
+readme = "README.md"
+authors = [
+    { name = "Konrad Rokicki", email = "rokicki@janelia.hhmi.org" }
+]
+license = { text = "BSD-3-Clause" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.6"
+dependencies = [
+    "aiobotocore",
+    "boto3",
+    "botocore",
+    "fastapi",
+    "loguru",
+    "pydantic",
+    "pydantic-settings",
+    "python-dateutil",
+    "pytest",
+    "starlette",
+    "typing_extensions",
+    "uvicorn"
+]
+
+[project.urls]
+Homepage = "https://github.com/JaneliaSciComp/x2s3"
+Repository = "https://github.com/JaneliaSciComp/x2s3"
+
+[tool.setuptools]
+packages = ["x2s3"] 

@@ -1,5 +1,7 @@
 # Python
 __pycache__
+dist
+*.egg-info
 
 # File system
 .DS_Store
