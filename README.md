@@ -1,6 +1,6 @@
 # x2s3
 
-![Python CI](https://github.com/JaneliaSciComp/x2s3/actions/workflows/python-ci.yml/badge.svg)
+[![Python CI](https://github.com/JaneliaSciComp/x2s3/actions/workflows/python-ci.yml/badge.svg)](https://github.com/JaneliaSciComp/x2s3/actions/workflows/python-ci.yml)
 
 RESTful web service which makes any storage system *X* available as an S3-compatible REST API, hence the name "X to S3". It was initially built to support cloud-compatible microscopy image viewers such as [N5 Viewer](https://github.com/saalfeldlab/n5-viewer) (BigDataViewer) and [Neuroglancer](https://github.com/google/neuroglancer).
 
