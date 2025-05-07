@@ -4,9 +4,11 @@
 
 Create a virtualenv and install the dependencies:
 
-    virtualenv env
-    source env/bin/activate
-    pip install -r requirements.txt
+```bash
+virtualenv env
+source env/bin/activate
+pip install -r requirements.txt
+```
 
 The service is written using FastAPI and runs inside of Uvicorn. You can start a dev server quickly with the `run.sh` helper script:
 
@@ -54,7 +56,7 @@ docker buildx build --platform linux/amd64,linux/arm64 --build-arg GIT_TAG=$VERS
 
 After creating a new release, remember to update the version in `pyproject.toml`, then:
 
-```
+```bash
 pip install build twine
 python -m build
 python -m twine upload dist/*
