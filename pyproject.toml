@@ -29,7 +29,16 @@ dependencies = [
     "pytest",
     "starlette",
     "typing_extensions",
-    "uvicorn"
+    "uvicorn",
+    "httpx",
+    "jinja2"
+]
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-html",
+    "coverage"
 ]
 
 [project.urls]
