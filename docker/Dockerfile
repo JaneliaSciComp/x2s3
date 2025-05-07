@@ -1,4 +1,4 @@
-FROM python:3.9
+FROM python:3.10
 ARG GIT_TAG=main
 
 ENV HOST=0.0.0.0
