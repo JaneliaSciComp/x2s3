@@ -45,6 +45,8 @@ Pygments==2.19.1
 pyproject_hooks==1.2.0
 pytest==8.3.5
 pytest-cov==6.1.1
+pytest-html==4.1.1
+pytest-metadata==3.1.1
 python-dateutil==2.9.0.post0
 python-dotenv==1.1.0
 readme_renderer==44.0
