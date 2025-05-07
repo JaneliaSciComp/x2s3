@@ -7,7 +7,7 @@ Create a virtualenv and install the dependencies:
 ```bash
 virtualenv env
 source env/bin/activate
-pip install -r requirements.txt
+pip install -e ".[dev]"
 ```
 
 The service is written using FastAPI and runs inside of Uvicorn. You can start a dev server quickly with the `run.sh` helper script:
@@ -29,6 +29,13 @@ uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --workers 8 --access-log --ssl-k
 ```
 
 For production deployments, please refer to the main [README](../README.md) file.
+
+
+## Freezing requirements
+
+```bash
+pip freeze | grep -v '^-e' > requirements.txt
+```
 
 
 ## Testing
