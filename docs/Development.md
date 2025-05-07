@@ -47,18 +47,12 @@ Run the Docker build, replacing `<version>` with your version number:
 ```bash
 cd docker/
 export VERSION=<version>
-docker build . --build-arg GIT_TAG=$VERSION -t ghcr.io/janeliascicomp/x2s3:$VERSION
-```
-
-## Pushing the Docker container
-
-```bash
-docker push ghcr.io/janeliascicomp/x2s3:$VERSION
-docker tag ghcr.io/janeliascicomp/x2s3:$VERSION ghcr.io/janeliascicomp/x2s3:latest
-docker push ghcr.io/janeliascicomp/x2s3:latest
+docker buildx build --platform linux/amd64,linux/arm64 --build-arg GIT_TAG=$VERSION -t ghcr.io/janeliascicomp/x2s3:$VERSION -t ghcr.io/janeliascicomp/x2s3:latest --push .
 ```
 
 ## Deploying to PyPI
+
+After creating a new release, remember to update the version in `pyproject.toml`, then:
 
 ```
 pip install build twine
