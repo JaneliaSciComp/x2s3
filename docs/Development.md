@@ -58,3 +58,10 @@ docker tag ghcr.io/janeliascicomp/x2s3:$VERSION ghcr.io/janeliascicomp/x2s3:late
 docker push ghcr.io/janeliascicomp/x2s3:latest
 ```
 
+## Deploying to PyPI
+
+```
+pip install build twine
+python -m build
+python -m twine upload dist/*
+```
