@@ -4,7 +4,7 @@ from typing import Optional
 
 from loguru import logger
 from fastapi import FastAPI, HTTPException, Request, Query
-from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -297,7 +297,7 @@ def create_app(settings):
             return await client.head_object(target_path)
         except:
             logger.opt(exception=sys.exc_info()).info("Error requesting head")
-            return JSONResponse({"error":"Error requesting HEAD"}, status_code=500)
+            return get_error_response(500, "InternalError", "Error requesting HEAD", path)
 
     return app
 
