@@ -55,8 +55,16 @@ Run the Docker build, replacing `<version>` with your version number:
 
 ```bash
 cd docker/
-export VERSION=<version>
-docker buildx build --platform linux/amd64,linux/arm64 --build-arg GIT_TAG=$VERSION -t ghcr.io/janeliascicomp/x2s3:$VERSION -t ghcr.io/janeliascicomp/x2s3:latest --push .
+export VER=<version>
+export IMAGE="ghcr.io/janeliascicomp/x2s3"
+podman build --jobs=2 --platform=linux/amd64,linux/arm64 \
+      --manifest "$IMAGE:$VER" --tag "$IMAGE:latest" .
+```
+
+Push the images to GHCR:
+```
+podman manifest push --all "$IMAGE:$VER" "docker://$IMAGE:$VER"
+podman manifest push --all "$IMAGE:latest" "docker://$IMAGE:latest"
 ```
 
 ## Deploying to PyPI
