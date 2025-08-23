@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "x2s3"
-version = "0.8.0"
+version = "0.8.2"
 description = "RESTful web service which makes any storage system X available as an S3-compatible REST API"
 readme = "README.md"
 authors = [
