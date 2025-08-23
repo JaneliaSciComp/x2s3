@@ -94,7 +94,7 @@ def test_list_objects_delimiter(app):
 
 def test_head_object(app):
     with TestClient(app) as client:
-        response = client.head("/local-files/requirements.txt")
+        response = client.head("/local-files/README.md")
         assert response.status_code == 200
         response = client.head("/local-files/x2s3/")
         assert response.status_code == 404
@@ -102,10 +102,10 @@ def test_head_object(app):
 
 def test_get_object(app):
     with TestClient(app) as client:
-        response = client.get("/local-files/requirements.txt")
+        response = client.get("/local-files/README.md")
         assert response.status_code == 200
-        assert response.headers['content-type'].startswith("text/plain")
-        assert 'aiobotocore' in response.text
+        assert response.headers['content-type'].startswith("text/markdown")
+        assert 'x2s3' in response.text
 
 
 def test_get_object_missing(app):
