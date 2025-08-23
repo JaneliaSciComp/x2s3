@@ -25,6 +25,7 @@ dependencies = [
     "loguru >=0.7",
     "pydantic >=2.11",
     "pydantic-settings >=2.9",
+    "pydantic-settings-yaml >=0.2.0",
     "python-dateutil >=2.9",
     "pytest >=8.3",
     "starlette >=0.46",
