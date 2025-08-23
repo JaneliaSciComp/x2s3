@@ -15,3 +15,7 @@ config.yaml
 .coverage
 htmlconv
 assets
+
+# AI assistants
+CLAUDE.md
+
