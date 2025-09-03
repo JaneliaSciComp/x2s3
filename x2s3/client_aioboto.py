@@ -26,7 +26,7 @@ def handle_s3_exception(e, key=None):
         status_code = e.response['ResponseMetadata']['HTTPStatusCode']
         error = e.response['Error']
         error_code = error['Code'] if 'Code' in error else 'Unknown'
-        if error_code == "NoSuchKey":
+        if error_code == "NoSuchKey" or error_code == "404":
             return get_nosuchkey_response(key)
         else:
             message = error['Message'] if 'Message' in error else 'Unknown'
