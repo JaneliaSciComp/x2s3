@@ -36,7 +36,8 @@ def create_app(settings):
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request, exc):
-        return get_error_response(400, 'InvalidArgument', exc.detail, request.url.path)
+        error = exc.errors()[0]
+        return get_error_response(400, 'InvalidArgument', error['msg'], request.url.path)
 
 
     @app.on_event("startup")
