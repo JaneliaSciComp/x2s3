@@ -286,7 +286,7 @@ def test_list_objects_error(app):
     with TestClient(app) as client:
         response = client.get(f"/janelia-data-examples?list-type=2&max-keys=aaa")
         assert response.status_code == 400
-        assert response.headers['content-type'] == "application/json"
+        assert response.headers['content-type'] == "application/xml"
 
 
 def test_get_object_precedence(app):

@@ -3,6 +3,7 @@ import urllib
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from mimetypes import guess_type
+from html import escape
 
 from loguru import logger
 from dateutil import parser
@@ -157,7 +158,7 @@ def get_nosuchkey_response(key):
         <Error>
             <Code>NoSuchKey</Code>
             <Message>The specified key does not exist.</Message>
-            <Key>{key}</Key>
+            <Key>{escape(key)}</Key>
         </Error>
         """), status_code=404, media_type="application/xml")
 
@@ -168,7 +169,7 @@ def get_nosuchbucket_response(bucket_name):
         <Error>
             <Code>NoSuchBucket</Code>
             <Message>The specified bucket does not exist</Message>
-            <BucketName>{bucket_name}</BucketName>
+            <BucketName>{escape(bucket_name)}</BucketName>
         </Error>
         """), status_code=404, media_type="application/xml")
 
@@ -187,9 +188,9 @@ def get_error_response(status_code, error_code, message, resource):
     return Response(content=inspect.cleandoc(f"""
         <?xml version="1.0" encoding="UTF-8"?>
         <Error>
-            <Code>{error_code}</Code>
-            <Message>{message}</Message>
-            <Resource>{resource}</Resource>
+            <Code>{escape(error_code)}</Code>
+            <Message>{escape(message)}</Message>
+            <Resource>{escape(resource)}</Resource>
         </Error>
         """),
         status_code=status_code,
