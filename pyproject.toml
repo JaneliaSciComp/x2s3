@@ -1,20 +1,19 @@
-[build-system]
-requires = ["setuptools>=42", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "x2s3"
 version = "0.8.3"
 description = "RESTful web service which makes any storage system X available as an S3-compatible REST API"
 readme = "README.md"
+license = { file = "LICENSE" }
 authors = [
     { name = "Konrad Rokicki", email = "rokicki@janelia.hhmi.org" }
 ]
-license = { file = "LICENSE" }
 classifiers = [
-    "Programming Language :: Python :: 3",
     "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 requires-python = ">=3.12"
 dependencies = [
@@ -40,6 +39,10 @@ dev = [
     "pytest-html",
     "httpx >=0.28"
 ]
+release = [
+    "build",
+    "twine"
+]
 
 [project.urls]
 Homepage = "https://github.com/JaneliaSciComp/x2s3"
@@ -47,3 +50,28 @@ Repository = "https://github.com/JaneliaSciComp/x2s3"
 
 [tool.setuptools]
 packages = ["x2s3"] 
+
+[tool.pixi.project]
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "osx-64", "linux-64"]
+
+[tool.pixi.tasks]
+dev-install = "pip install -e ."
+dev-launch = "uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --workers 1 --access-log --reload"
+
+[tool.pixi.feature.test.tasks]
+test-install = "pip install -e ."
+test = { cmd = "pytest tests", depends-on = ["test-install"] }
+
+[tool.pixi.feature.release.tasks]
+pypi-build = "python -m build"
+pypi-upload = "twine upload dist/*"
+
+[tool.pixi.environments]
+default = {features = [], solve-group = "default"}
+test = {features = ["test"], solve-group = "default"}
+release = {features = ["release"], solve-group = "default"}
+
+[tool.pixi.dependencies]
+python = "3.12.*"
+pip = "*"
