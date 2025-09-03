@@ -32,12 +32,11 @@ def create_app(settings):
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request, exc):
-        return JSONResponse({"error":str(exc.detail)}, status_code=exc.status_code)
-
+        return get_error_response(exc.status_code, 'InternalError', exc.detail, request.url.path)
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request, exc):
-        return JSONResponse({"error":str(exc)}, status_code=400)
+        return get_error_response(400, 'InvalidArgument', exc.detail, request.url.path)
 
 
     @app.on_event("startup")
