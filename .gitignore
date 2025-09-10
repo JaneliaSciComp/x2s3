@@ -12,10 +12,10 @@ var
 config.yaml
 
 # Testing
-.coverage
+.coverage*
 htmlconv
 assets
 
 # AI assistants
 CLAUDE.md
-
+.claude
