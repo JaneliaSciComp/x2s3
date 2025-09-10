@@ -2,6 +2,7 @@ import os
 import sys
 from hashlib import md5
 from pathlib import Path
+from typing import Optional, Tuple
 from typing_extensions import override
 
 from loguru import logger
@@ -20,11 +21,80 @@ def handle_exception(e, key=None):
     return JSONResponse({"error":"Internal server error"}, status_code=500)
 
 
-def file_iterator(file_path: Path):
-    """ Open a file in binary mode and stream the content
+def parse_range_header(range_header: str, file_size: int) -> Optional[Tuple[int, int]]:
+    """Parse HTTP Range header and return start and end byte positions.
+    
+    Args:
+        range_header: HTTP Range header value (e.g., "bytes=0-499")
+        file_size: Total size of the file
+        
+    Returns:
+        Tuple of (start, end) byte positions, or None if invalid
+    """
+    if not range_header or not range_header.startswith('bytes='):
+        return None
+    
+    try:
+        range_spec = range_header[6:]  # Remove 'bytes=' prefix
+        if ',' in range_spec:
+            # Multiple ranges not supported, use first range
+            range_spec = range_spec.split(',')[0]
+        
+        if '-' not in range_spec:
+            return None
+            
+        start_str, end_str = range_spec.split('-', 1)
+        
+        if start_str and end_str:
+            # Both start and end specified: "bytes=0-499"
+            start = int(start_str)
+            end = int(end_str)
+        elif start_str and not end_str:
+            # Start specified, no end: "bytes=500-"
+            start = int(start_str)
+            end = file_size - 1
+        elif not start_str and end_str:
+            # End specified, no start (suffix range): "bytes=-500"
+            suffix_length = int(end_str)
+            start = max(0, file_size - suffix_length)
+            end = file_size - 1
+        else:
+            return None
+            
+        # Validate range
+        if start < 0 or end < 0 or start >= file_size or start > end:
+            return None
+            
+        # Clamp end to file size
+        end = min(end, file_size - 1)
+        
+        return (start, end)
+        
+    except (ValueError, IndexError):
+        return None
+
+
+def file_iterator(file_path: Path, start: int = 0, end: Optional[int] = None):
+    """Open a file in binary mode and stream the content.
+    
+    Args:
+        file_path: Path to the file to stream
+        start: Starting byte position
+        end: Ending byte position (inclusive), or None for end of file
     """
     with open(file_path, "rb") as file:
-        yield from file
+        file.seek(start)
+        if end is None:
+            yield from file
+        else:
+            remaining = end - start + 1
+            while remaining > 0:
+                chunk_size = min(8192, remaining)
+                chunk = file.read(chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+                remaining -= len(chunk)
 
 
 # From https://teppen.io/2018/10/23/aws_s3_verify_etags/
@@ -82,15 +152,46 @@ class FileProxyClient(ProxyClient):
 
             content_type = guess_content_type(filename)
             headers['Content-Type'] = content_type
+            headers['Accept-Ranges'] = 'bytes'
             if content_type=='application/octet-stream':
                 headers['Content-Disposition'] = f'attachment; filename="{filename}"'
 
             stats = os.stat(path)
             file_size = stats.st_size
-            headers["Content-Length"] = str(file_size)
             headers["Last-Modified"] = format_timestamp_s3(stats.st_mtime)
 
-            return StreamingResponse(file_iterator(path), headers=headers, media_type=content_type)
+            # Handle range requests
+            if range_header:
+                range_result = parse_range_header(range_header, file_size)
+                if range_result is None:
+                    # Invalid range, return 416 Range Not Satisfiable
+                    headers["Content-Range"] = f"bytes */{file_size}"
+                    return Response(
+                        status_code=416,
+                        headers=headers
+                    )
+                
+                start, end = range_result
+                content_length = end - start + 1
+                
+                # Set partial content headers
+                headers["Content-Length"] = str(content_length)
+                headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+                
+                return StreamingResponse(
+                    file_iterator(Path(path), start, end),
+                    status_code=206,  # Partial Content
+                    headers=headers,
+                    media_type=content_type
+                )
+            else:
+                # Full content
+                headers["Content-Length"] = str(file_size)
+                return StreamingResponse(
+                    file_iterator(Path(path)),
+                    headers=headers,
+                    media_type=content_type
+                )
 
         except Exception as e:
             return handle_exception(e, key)
