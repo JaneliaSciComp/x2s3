@@ -55,6 +55,7 @@ class FileProxyClient(ProxyClient):
             headers = {}
 
             content_type = guess_content_type(filename)
+            headers['Accept-Ranges'] = 'bytes'
             headers['Content-Type'] = content_type
             if content_type=='application/octet-stream':
                 headers['Content-Disposition'] = f'attachment; filename="{filename}"'
