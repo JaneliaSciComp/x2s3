@@ -55,6 +55,14 @@ Run the Docker build, replacing `<version>` with your version number:
 
 ```bash
 cd docker/
+export VERSION=<version>
+docker buildx build --platform linux/amd64,linux/arm64 --build-arg GIT_TAG=$VERSION -t ghcr.io/janeliascicomp/x2s3:$VERSION -t ghcr.io/janeliascicomp/x2s3:latest --push .
+```
+
+If you are using Podman, you can do something like this:
+
+```bash
+cd docker/
 export VER=<version>
 export IMAGE="ghcr.io/janeliascicomp/x2s3"
 podman build --jobs=2 --platform=linux/amd64,linux/arm64 \
