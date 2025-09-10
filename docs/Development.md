@@ -2,40 +2,27 @@
 
 ## Getting Started
 
-Create a virtualenv and install the dependencies:
+You will need [Pixi](https://pixi.sh/latest/) to build this project.
 
 ```bash
-virtualenv env
-source env/bin/activate
-pip install -e ".[dev]"
+pixi run dev-install
 ```
 
-The service is written using FastAPI and runs inside of Uvicorn. You can start a dev server quickly with the `run.sh` helper script:
+The service is written using FastAPI and runs inside of Uvicorn. You can start a dev server quickly with this command:
+
+Then run the development server:
 
 ```bash
-./run.sh
+pixi run dev-launch
 ```
 
-This is equivalent to running Uvicorn directly, like this:
+On a remote system, you may need SSL certs (e.g. for loading into Neuroglancer), which can be added like this (assuming your certificate is found at `/opt/certs/cert.key` and `/opt/certs/cert.crt`):
 
 ```bash
-uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --workers 1 --access-log --reload
-```
-
-You can specify TLS certificates and increase the number of workers in order to scale the service:
-
-```bash
-uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --workers 8 --access-log --ssl-keyfile /opt/tls/cert.key --ssl-certfile /opt/tls/cert.crt
+pixi run dev-launch-remote
 ```
 
 For production deployments, please refer to the main [README](../README.md) file.
-
-
-## Freezing requirements
-
-```bash
-pip freeze | grep -v '^-e' > requirements.txt
-```
 
 
 ## Testing
@@ -43,13 +30,28 @@ pip freeze | grep -v '^-e' > requirements.txt
 To run the unit tests and produce a code coverage report:
 
 ```bash
-python -m pytest --cov=x2s3 --cov-report html -W ignore::DeprecationWarning
+pixi run test
 ```
 
 These tests are automatically run whenever changes are merged to the *main* branch.
 
+## Release
 
-## Building the Docker container
+First, increment the version in `pyproject.toml` and push it to GitHub. Create a *Release* there and then publish it to PyPI as follows.
+
+To create a Python source package (`.tar.gz`) and the binary package (`.whl`) in the `dist/` directory, do:
+
+```bash
+pixi run pypi-build
+```
+
+To upload the package to the PyPI, you'll need one of the project owners to add you as a collaborator. After setting up your access token, do:
+
+```bash
+pixi run pypi-upload
+```
+
+### Building the Docker container
 
 Run the Docker build, replacing `<version>` with your version number:
 
@@ -63,24 +65,14 @@ If you are using Podman, you can do something like this:
 
 ```bash
 cd docker/
-export VER=<version>
+export VERSION=<version>
 export IMAGE="ghcr.io/janeliascicomp/x2s3"
 podman build --jobs=2 --platform=linux/amd64,linux/arm64 \
-      --manifest "$IMAGE:$VER" --tag "$IMAGE:latest" .
+      --manifest "$IMAGE:$VERSION" --tag "$IMAGE:latest" .
 ```
 
 Push the images to GHCR:
 ```
-podman manifest push --all "$IMAGE:$VER" "docker://$IMAGE:$VER"
+podman manifest push --all "$IMAGE:$VERSION" "docker://$IMAGE:$VERSION"
 podman manifest push --all "$IMAGE:latest" "docker://$IMAGE:latest"
-```
-
-## Deploying to PyPI
-
-After creating a new release, remember to update the version in `pyproject.toml`, then:
-
-```bash
-pip install build twine
-python -m build
-python -m twine upload dist/*
 ```
