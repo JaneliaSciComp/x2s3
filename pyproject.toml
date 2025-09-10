@@ -57,7 +57,8 @@ platforms = ["osx-arm64", "osx-64", "linux-64"]
 
 [tool.pixi.tasks]
 dev-install = "pip install -e ."
-dev-launch = "uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --workers 1 --access-log --reload"
+dev-launch = "uvicorn x2s3.app:app --port 8000 --access-log --reload"
+dev-launch-remote = "uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --access-log --reload  --ssl-keyfile /opt/certs/cert.key --ssl-certfile /opt/certs/cert.crt"
 
 [tool.pixi.feature.test.tasks]
 test-install = "pip install -e ."
