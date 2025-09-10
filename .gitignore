@@ -9,7 +9,7 @@ dist
 # App
 var
 .env
-config.yaml
+config.yaml*
 
 # Testing
 .coverage*
