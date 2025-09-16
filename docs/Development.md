@@ -53,7 +53,7 @@ pixi run pypi-upload
 
 ### Building the Docker container
 
-Run the Docker build, replacing `<version>` with your version number:
+Run the Docker build and push to GHCR, replacing `<version>` with your version number:
 
 ```bash
 cd docker/
