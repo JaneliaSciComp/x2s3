@@ -66,7 +66,7 @@ def parse_xml(xml):
 def url_encode(s):
     if not s: return None
     # AWS does something slightly strange here, maybe like this?
-    return urllib.parse.quote(s).replace('%20','+')
+    return urllib.parse.quote(s, safe='/ ').replace(' ','+')
 
 
 def get_bucket_list_xml(buckets):
