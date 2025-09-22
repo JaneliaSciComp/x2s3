@@ -81,12 +81,12 @@ def get_bucket_list_xml(buckets):
     return elem_to_str(root)
 
 
-def get_list_xml(contents, common_prefixes, **kwargs):
+def get_list_xml(contents, common_prefixes, url_encode=True, **kwargs):
     """ Creates S3-style XML elements for the given object listing.
     """
 
     is_url_encode = False
-    if 'EncodingType' in kwargs:
+    if url_encode and 'EncodingType' in kwargs:
         is_url_encode = kwargs['EncodingType']=='url'
 
     root = ET.Element("ListBucketResult")
