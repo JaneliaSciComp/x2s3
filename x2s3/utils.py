@@ -106,7 +106,7 @@ def get_list_xml(contents, common_prefixes, **kwargs):
 
     for key in keys:
         value = kwargs.get(key)
-        if is_url_encode and key in ['Delimiter', 'Prefix', 'Key', 'StartAfter']:
+        if is_url_encode and key in ['Delimiter', 'Prefix', 'StartAfter']:
             value = url_encode(value)
         add_telem(root, key, value)
 
