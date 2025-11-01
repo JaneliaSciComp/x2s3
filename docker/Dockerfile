@@ -1,3 +1,4 @@
+# check=skip=JSONArgsRecommended
 FROM python:3.12
 ARG GIT_TAG=main
 
