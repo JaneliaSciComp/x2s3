@@ -66,7 +66,7 @@ def parse_xml(xml):
 def url_encode(s):
     if not s: return None
     # AWS does something slightly strange here, maybe like this?
-    return urllib.parse.quote(s).replace('%20','+')
+    return urllib.parse.quote(s, safe='/ ').replace(' ','+')
 
 
 def get_bucket_list_xml(buckets):
@@ -81,12 +81,12 @@ def get_bucket_list_xml(buckets):
     return elem_to_str(root)
 
 
-def get_list_xml(contents, common_prefixes, **kwargs):
+def get_list_xml(contents, common_prefixes, url_encode=True, **kwargs):
     """ Creates S3-style XML elements for the given object listing.
     """
 
     is_url_encode = False
-    if 'EncodingType' in kwargs:
+    if url_encode and 'EncodingType' in kwargs:
         is_url_encode = kwargs['EncodingType']=='url'
 
     root = ET.Element("ListBucketResult")
@@ -106,7 +106,7 @@ def get_list_xml(contents, common_prefixes, **kwargs):
 
     for key in keys:
         value = kwargs.get(key)
-        if is_url_encode and key in ['Delimiter', 'Prefix', 'Key', 'StartAfter']:
+        if is_url_encode and key in ['Delimiter', 'Prefix', 'StartAfter']:
             value = url_encode(value)
         add_telem(root, key, value)
 
