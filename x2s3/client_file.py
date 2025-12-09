@@ -1,5 +1,6 @@
 import os
 import sys
+from dataclasses import dataclass
 from hashlib import md5
 from pathlib import Path
 from typing import Optional, Tuple
@@ -9,7 +10,15 @@ from loguru import logger
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 
 from x2s3.utils import *
-from x2s3.client import ProxyClient
+from x2s3.client import ProxyClient, ObjectHandle
+
+
+@dataclass
+class FileObjectHandle(ObjectHandle):
+    """Handle for file-based object storage."""
+    file_path: Path = None
+    start: int = 0
+    end: Optional[int] = None
 
 
 STATIC_ETAG = '"11111111111111111111111111111111"'
@@ -141,7 +150,8 @@ class FileProxyClient(ProxyClient):
 
 
     @override
-    async def get_object(self, key: str, range_header: str = None):
+    async def open_object(self, key: str, range_header: str = None):
+        """Open a file object and return a handle for streaming."""
         try:
             path = os.path.join(self.root_path, key)
             if not os.path.isfile(path):
@@ -153,7 +163,7 @@ class FileProxyClient(ProxyClient):
             content_type = guess_content_type(filename)
             headers['Content-Type'] = content_type
             headers['Accept-Ranges'] = 'bytes'
-            if content_type=='application/octet-stream':
+            if content_type == 'application/octet-stream':
                 headers['Content-Disposition'] = f'attachment; filename="{filename}"'
 
             stats = os.stat(path)
@@ -170,31 +180,58 @@ class FileProxyClient(ProxyClient):
                         status_code=416,
                         headers=headers
                     )
-                
+
                 start, end = range_result
                 content_length = end - start + 1
-                
+
                 # Set partial content headers
                 headers["Content-Length"] = str(content_length)
                 headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
-                
-                return StreamingResponse(
-                    file_iterator(Path(path), start, end),
+
+                return FileObjectHandle(
+                    key=key,
                     status_code=206,  # Partial Content
                     headers=headers,
-                    media_type=content_type
+                    media_type=content_type,
+                    content_length=content_length,
+                    file_path=Path(path),
+                    start=start,
+                    end=end
                 )
             else:
                 # Full content
                 headers["Content-Length"] = str(file_size)
-                return StreamingResponse(
-                    file_iterator(Path(path)),
+                return FileObjectHandle(
+                    key=key,
+                    status_code=200,
                     headers=headers,
-                    media_type=content_type
+                    media_type=content_type,
+                    content_length=file_size,
+                    file_path=Path(path),
+                    start=0,
+                    end=None
                 )
 
         except Exception as e:
             return handle_exception(e, key)
+
+    @override
+    def stream_object(self, handle: FileObjectHandle):
+        """Stream content from an opened file object handle."""
+        return StreamingResponse(
+            file_iterator(handle.file_path, handle.start, handle.end),
+            status_code=handle.status_code,
+            headers=handle.headers,
+            media_type=handle.media_type
+        )
+
+    @override
+    async def get_object(self, key: str, range_header: str = None):
+        """Convenience method that combines open_object() and stream_object()."""
+        result = await self.open_object(key, range_header)
+        if isinstance(result, FileObjectHandle):
+            return self.stream_object(result)
+        return result  # Error response
 
 
     @override

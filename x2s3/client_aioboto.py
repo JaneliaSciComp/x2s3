@@ -2,6 +2,8 @@ import asyncio
 import os
 import sys
 import typing
+from dataclasses import dataclass
+from typing import Any
 from typing_extensions import override
 
 from loguru import logger
@@ -13,7 +15,14 @@ from aiobotocore.config import AioConfig
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 
 from x2s3.utils import *
-from x2s3.client import ProxyClient
+from x2s3.client import ProxyClient, ObjectHandle
+
+
+@dataclass
+class S3ObjectHandle(ObjectHandle):
+    """Handle for S3-based object storage."""
+    body: Any = None  # The S3 response body stream
+
 
 def handle_s3_exception(e, key=None):
     """ Handle various cases of generic errors from the boto AWS API.
@@ -99,15 +108,11 @@ class AiobotoProxyClient(ProxyClient):
                     ).__aenter__()
         return self.client
 
-    async def __aenter__(self):
-        """Initialize the async client for use in async context manager"""
-        await self._ensure_client()
-        return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Clean up the client"""
+    async def close(self):
+        """Clean up the client and release resources."""
         if self.client is not None:
-            await self.client.__aexit__(exc_type, exc_val, exc_tb)
+            await self.client.__aexit__(None, None, None)
             self.client = None
 
 
@@ -138,7 +143,8 @@ class AiobotoProxyClient(ProxyClient):
 
 
     @override
-    async def get_object(self, key: str, range_header: str = None):
+    async def open_object(self, key: str, range_header: str = None):
+        """Open an S3 object and return a handle for streaming."""
         real_key = key
         if self.bucket_prefix:
             real_key = os.path.join(self.bucket_prefix, key) if key else self.bucket_prefix
@@ -151,24 +157,67 @@ class AiobotoProxyClient(ProxyClient):
             'Content-Type': content_type,
         }
 
-        if content_type=='application/octet-stream':
+        if content_type == 'application/octet-stream':
             headers['Content-Disposition'] = f'attachment; filename="{filename}"'
 
         # Ensure the shared client is initialized
         await self._ensure_client()
 
         try:
-            return S3Stream(
-                self.client,
+            # Build S3 get_object parameters
+            get_object_params = {
+                "Bucket": self.bucket_name,
+                "Key": real_key,
+            }
+            if range_header:
+                get_object_params["Range"] = range_header
+
+            # Call S3 get_object
+            result = await self.client.get_object(**get_object_params)
+            res_headers = result["ResponseMetadata"]["HTTPHeaders"]
+            body = result["Body"]
+
+            # Determine status code and add response headers
+            status_code = 200
+            content_length = 0
+
+            if "content-range" in res_headers:
+                status_code = 206  # Partial Content
+                headers["Content-Range"] = res_headers["content-range"]
+
+            if "content-length" in res_headers:
+                headers["Content-Length"] = res_headers["content-length"]
+                content_length = int(res_headers["content-length"])
+
+            return S3ObjectHandle(
+                key=key,
+                status_code=status_code,
                 headers=headers,
                 media_type=content_type,
-                bucket=self.bucket_name,
-                key=key,
-                real_key=real_key,
-                range_header=range_header,
-                )
+                content_length=content_length,
+                body=body
+            )
+
         except Exception as e:
             return handle_s3_exception(e, key)
+
+    @override
+    def stream_object(self, handle: S3ObjectHandle):
+        """Stream content from an opened S3 object handle."""
+        return S3Stream(
+            body=handle.body,
+            status_code=handle.status_code,
+            headers=handle.headers,
+            media_type=handle.media_type,
+        )
+
+    @override
+    async def get_object(self, key: str, range_header: str = None):
+        """Convenience method that combines open_object() and stream_object()."""
+        result = await self.open_object(key, range_header)
+        if isinstance(result, S3ObjectHandle):
+            return self.stream_object(result)
+        return result  # Error response
 
 
     @override
@@ -248,98 +297,50 @@ class AiobotoProxyClient(ProxyClient):
 
 # Adapted from https://stackoverflow.com/questions/69617252/response-file-stream-from-s3-fastapi
 class S3Stream(StreamingResponse):
-    """ Stream the result of GetObject.
-    """
+    """Stream content from an S3 body stream."""
+
     def __init__(
             self,
-            client: typing.Any,
+            body: typing.Any,
             content: typing.Any = None,
             status_code: int = 200,
             headers: dict = None,
             media_type: str = None,
             background: BackgroundTask = None,
-            bucket: str = None,
-            key: str = None,
-            real_key: str = None,
-            range_header: str = None
     ):
         super(S3Stream, self).__init__(content, status_code, headers, media_type, background)
-        self.client = client
-        self.bucket = bucket
-        self.key = key
-        self.real_key = real_key
-        self.range_header = range_header
+        self.body = body
 
     async def stream_response(self, send) -> None:
+        body = self.body
 
-        async def send_response(r):
-            await send({
-                "type": "http.response.start",
-                "status": r.status_code,
-                "headers": r.raw_headers,
-            })
-            await send({
-                "type": "http.response.body",
-                "body": r.body,
-                "more_body": False,
-            })
+        await send({
+            "type": "http.response.start",
+            "status": self.status_code,
+            "headers": self.raw_headers,
+        })
 
-        body = None
+        # Stream the body - connection from pool stays active during streaming
+        # Wrap in try/finally to ensure cleanup on client cancellation
         try:
-            # Get the object with the range specified in headers
-            # Using the shared client directly - connection pool handles lifecycle
-            get_object_params = {
-                "Bucket": self.bucket,
-                "Key": self.real_key,
-            }
-            if self.range_header:
-                get_object_params["Range"] = self.range_header
+            async for chunk in body:
 
-            result = await self.client.get_object(**get_object_params)
-            res_headers = result["ResponseMetadata"]["HTTPHeaders"]
-            body = result["Body"]  # Store reference for cleanup
-
-            # Determine if this is a Range result
-            if "content-range" in res_headers:
-                self.status_code = 206 # Partial Content
-                self.raw_headers.append((b"content-range",
-                    res_headers["content-range"].encode('utf-8')))
-
-            if "content-length" in res_headers:
-                self.raw_headers.append((b"content-length",
-                    res_headers["content-length"].encode('utf-8')))
-
-            await send({
-                "type": "http.response.start",
-                "status": self.status_code,
-                "headers": self.raw_headers,
-            })
-
-            # Stream the body - connection from pool stays active during streaming
-            # Wrap in try/finally to ensure cleanup on client cancellation
-            try:
-                async for chunk in body:
-
-                    if not isinstance(chunk, bytes):
-                        chunk = chunk.encode(self.charset)
-
-                    await send({
-                        "type": "http.response.body",
-                        "body": chunk,
-                        "more_body": True
-                    })
+                if not isinstance(chunk, bytes):
+                    chunk = chunk.encode(self.charset)
 
                 await send({
                     "type": "http.response.body",
-                    "body": b"",
-                    "more_body": False})
+                    "body": chunk,
+                    "more_body": True
+                })
 
-            finally:
-                # Always close body to release connection back to pool
-                # This ensures cleanup even when client cancels mid-stream
-                if body is not None and hasattr(body, 'close'):
-                    body.close()
+            await send({
+                "type": "http.response.body",
+                "body": b"",
+                "more_body": False})
 
-        except Exception as e:
-            r = handle_s3_exception(e, self.key)
-            await send_response(r)
+        finally:
+            # Always close body to release connection back to pool
+            # This ensures cleanup even when client cancels mid-stream
+            if body is not None and hasattr(body, 'close'):
+                body.close()

@@ -106,9 +106,9 @@ def create_app(settings):
         """
         logger.info("Shutting down, closing client connections...")
         for target_name, client in app.clients.items():
-            if hasattr(client, '__aexit__'):
+            if hasattr(client, 'close'):
                 try:
-                    await client.__aexit__(None, None, None)
+                    await client.close()
                     logger.debug(f"Closed client for target: {target_name}")
                 except Exception as e:
                     logger.error(f"Error closing client for {target_name}: {e}")
