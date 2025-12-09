@@ -84,11 +84,6 @@ class AiobotoProxyClient(ProxyClient):
         self.client = None  # Will be initialized on first use
 
 
-    def get_client_creator(self):
-        session = get_session()
-        conf = AioConfig(signature_version=botocore.UNSIGNED) if self.anonymous else AioConfig()
-        return session.create_client('s3', config=conf, **self.client_kwargs)
-
     async def _ensure_client(self):
         """Ensure the shared client is initialized"""
         if self.client is None:
