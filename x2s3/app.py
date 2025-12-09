@@ -15,6 +15,15 @@ from x2s3.utils import *
 from x2s3 import client_registry
 from x2s3.settings import get_settings, Target
 
+# Use uvloop for better async performance
+try:
+    import uvloop
+    import asyncio
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    logger.info("uvloop event loop policy installed")
+except ImportError:
+    logger.warning("uvloop not available, using default asyncio event loop")
+
 def create_app(settings):
 
     app = FastAPI()
@@ -28,7 +37,6 @@ def create_app(settings):
     )
     app.mount("/static", StaticFiles(directory="static"), name="static")
     templates = Jinja2Templates(directory="templates")
-
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request, exc):
