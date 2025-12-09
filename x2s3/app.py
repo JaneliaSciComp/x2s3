@@ -1,8 +1,13 @@
+import logging
 import os
 import sys
 from typing import Optional
 
 from loguru import logger
+
+# Suppress asyncio SSL connection closed warnings (common during client cancellations)
+logging.getLogger("asyncio").setLevel(logging.ERROR)
+
 from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
