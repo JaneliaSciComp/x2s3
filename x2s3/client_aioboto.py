@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import typing
@@ -82,16 +83,20 @@ class AiobotoProxyClient(ProxyClient):
 
         self.conf = AioConfig(**conf_kwargs)
         self.client = None  # Will be initialized on first use
+        self._client_lock = asyncio.Lock()  # Prevents race condition on init
 
 
     async def _ensure_client(self):
-        """Ensure the shared client is initialized"""
+        """Ensure the shared client is initialized (thread-safe)"""
         if self.client is None:
-            self.client = await self.session.create_client(
-                's3',
-                config=self.conf,
-                **self.client_kwargs
-            ).__aenter__()
+            async with self._client_lock:
+                # Double-check after acquiring lock
+                if self.client is None:
+                    self.client = await self.session.create_client(
+                        's3',
+                        config=self.conf,
+                        **self.client_kwargs
+                    ).__aenter__()
         return self.client
 
     async def __aenter__(self):
