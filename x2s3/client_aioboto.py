@@ -284,6 +284,7 @@ class S3Stream(StreamingResponse):
                 "more_body": False,
             })
 
+        body = None
         try:
             # Get the object with the range specified in headers
             # Using the shared client directly - connection pool handles lifecycle
@@ -296,6 +297,7 @@ class S3Stream(StreamingResponse):
 
             result = await self.client.get_object(**get_object_params)
             res_headers = result["ResponseMetadata"]["HTTPHeaders"]
+            body = result["Body"]  # Store reference for cleanup
 
             # Determine if this is a Range result
             if "content-range" in res_headers:
@@ -314,22 +316,29 @@ class S3Stream(StreamingResponse):
             })
 
             # Stream the body - connection from pool stays active during streaming
-            # but is limited by connector_args (max 30 per host)
-            async for chunk in result["Body"]:
+            # Wrap in try/finally to ensure cleanup on client cancellation
+            try:
+                async for chunk in body:
 
-                if not isinstance(chunk, bytes):
-                    chunk = chunk.encode(self.charset)
+                    if not isinstance(chunk, bytes):
+                        chunk = chunk.encode(self.charset)
+
+                    await send({
+                        "type": "http.response.body",
+                        "body": chunk,
+                        "more_body": True
+                    })
 
                 await send({
                     "type": "http.response.body",
-                    "body": chunk,
-                    "more_body": True
-                })
+                    "body": b"",
+                    "more_body": False})
 
-            await send({
-                "type": "http.response.body",
-                "body": b"",
-                "more_body": False})
+            finally:
+                # Always close body to release connection back to pool
+                # This ensures cleanup even when client cancels mid-stream
+                if body is not None and hasattr(body, 'close'):
+                    body.close()
 
         except Exception as e:
             r = handle_s3_exception(e, self.key)
