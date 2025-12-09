@@ -123,10 +123,25 @@ class FileProxyClient(ProxyClient):
         self.root_path = str(Path(kwargs['path']).resolve())
         self.calculate_etags = kwargs.get('calculate_etags', False)
 
+    def _safe_path(self, key: str) -> Optional[str]:
+        """Resolve key to absolute path and validate it's within root_path.
+
+        Returns the safe absolute path, or None if path traversal detected.
+        """
+        # Join and resolve to absolute path
+        path = os.path.realpath(os.path.join(self.root_path, key))
+        # Ensure path is within root_path (prevent directory traversal)
+        if not path.startswith(self.root_path + os.sep) and path != self.root_path:
+            logger.warning(f"Path traversal attempt blocked: {key}")
+            return None
+        return path
+
     @override
     async def head_object(self, key: str):
         try:
-            path = os.path.join(self.root_path, key)
+            path = self._safe_path(key)
+            if path is None:
+                return get_nosuchkey_response(key)
             if not os.path.isfile(path):
                 return get_nosuchkey_response(key)
 
@@ -153,7 +168,9 @@ class FileProxyClient(ProxyClient):
     async def open_object(self, key: str, range_header: str = None):
         """Open a file object and return a handle for streaming."""
         try:
-            path = os.path.join(self.root_path, key)
+            path = self._safe_path(key)
+            if path is None:
+                return get_nosuchkey_response(key)
             if not os.path.isfile(path):
                 return get_nosuchkey_response(key)
 
@@ -254,7 +271,11 @@ class FileProxyClient(ProxyClient):
         try:
             path = str(self.root_path)
             if real_prefix:
-                path = os.path.join(path, real_prefix)
+                path = self._safe_path(real_prefix)
+                if path is None:
+                    # Path traversal attempt - return empty listing
+                    return Response(content=get_list_xml([], [], Name=self.target_name),
+                                    media_type="application/xml")
 
             logger.debug(f"root_path: {self.root_path}, real_prefix: {real_prefix}, path: {path}")
 
