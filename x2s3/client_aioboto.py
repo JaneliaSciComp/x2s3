@@ -68,11 +68,47 @@ class AiobotoProxyClient(ProxyClient):
         if 'endpoint' in kwargs:
             self.client_kwargs['endpoint_url'] = kwargs.get('endpoint')
 
+        # Create shared session and configure connection pooling
+        self.session = get_session()
+
+        # Configure AioConfig with connection pool limits
+        conf_kwargs = {}
+        if self.anonymous:
+            conf_kwargs['signature_version'] = botocore.UNSIGNED
+
+        # Limit connections to prevent file descriptor exhaustion
+        # max_pool_connections limits the connection pool size
+        conf_kwargs['max_pool_connections'] = 30
+
+        self.conf = AioConfig(**conf_kwargs)
+        self.client = None  # Will be initialized on first use
+
 
     def get_client_creator(self):
         session = get_session()
         conf = AioConfig(signature_version=botocore.UNSIGNED) if self.anonymous else AioConfig()
         return session.create_client('s3', config=conf, **self.client_kwargs)
+
+    async def _ensure_client(self):
+        """Ensure the shared client is initialized"""
+        if self.client is None:
+            self.client = await self.session.create_client(
+                's3',
+                config=self.conf,
+                **self.client_kwargs
+            ).__aenter__()
+        return self.client
+
+    async def __aenter__(self):
+        """Initialize the async client for use in async context manager"""
+        await self._ensure_client()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Clean up the client"""
+        if self.client is not None:
+            await self.client.__aexit__(exc_type, exc_val, exc_tb)
+            self.client = None
 
 
     @override
@@ -81,22 +117,24 @@ class AiobotoProxyClient(ProxyClient):
         if self.bucket_prefix:
             real_key = os.path.join(self.bucket_prefix, key) if key else self.bucket_prefix
 
-        async with self.get_client_creator() as client:
-            try:
-                s3_res = await client.head_object(Bucket=self.bucket_name, Key=real_key)
-                headers = {
-                    "ETag": s3_res.get("ETag"),
-                    "Accept-Ranges": "bytes",
-                    "Content-Length": str(s3_res.get("ContentLength")),
-                    "Last-Modified": s3_res.get("LastModified").strftime("%a, %d %b %Y %H:%M:%S GMT"),
-                }
+        # Ensure the shared client is initialized
+        await self._ensure_client()
 
-                content_type = guess_content_type(real_key)
-                headers['Content-Type'] = content_type
+        try:
+            s3_res = await self.client.head_object(Bucket=self.bucket_name, Key=real_key)
+            headers = {
+                "ETag": s3_res.get("ETag"),
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(s3_res.get("ContentLength")),
+                "Last-Modified": s3_res.get("LastModified").strftime("%a, %d %b %Y %H:%M:%S GMT"),
+            }
 
-                return Response(headers=headers)
-            except Exception as e:
-                return handle_s3_exception(e, key)
+            content_type = guess_content_type(real_key)
+            headers['Content-Type'] = content_type
+
+            return Response(headers=headers)
+        except Exception as e:
+            return handle_s3_exception(e, key)
 
 
     @override
@@ -116,9 +154,12 @@ class AiobotoProxyClient(ProxyClient):
         if content_type=='application/octet-stream':
             headers['Content-Disposition'] = f'attachment; filename="{filename}"'
 
+        # Ensure the shared client is initialized
+        await self._ensure_client()
+
         try:
             return S3Stream(
-                self.get_client_creator,
+                self.client,
                 headers=headers,
                 media_type=content_type,
                 bucket=self.bucket_name,
@@ -149,58 +190,60 @@ class AiobotoProxyClient(ProxyClient):
         if real_prefix and not real_prefix.endswith('/'):
             real_prefix += '/'
 
-        async with self.get_client_creator() as client:
-            try:
-                params = {
-                    "Bucket": self.bucket_name,
-                    "ContinuationToken": continuation_token,
-                    "Delimiter": delimiter,
-                    "EncodingType": encoding_type,
-                    "FetchOwner": fetch_owner,
-                    "MaxKeys": max_keys,
-                    "Prefix": real_prefix,
-                    "StartAfter": start_after
-                }
-                # Remove any None values because boto3 doesn't like those
-                params = {k: v for k, v in params.items() if v is not None}
+        # Ensure the shared client is initialized
+        await self._ensure_client()
 
-                response = await client.list_objects_v2(**params)
-                next_token = remove_prefix(self.bucket_prefix, response.get("NextContinuationToken", ""))
-                is_truncated = "true" if response.get("IsTruncated", False) else "false"
+        try:
+            params = {
+                "Bucket": self.bucket_name,
+                "ContinuationToken": continuation_token,
+                "Delimiter": delimiter,
+                "EncodingType": encoding_type,
+                "FetchOwner": fetch_owner,
+                "MaxKeys": max_keys,
+                "Prefix": real_prefix,
+                "StartAfter": start_after
+            }
+            # Remove any None values because boto3 doesn't like those
+            params = {k: v for k, v in params.items() if v is not None}
 
-                contents = []
-                for obj in response.get("Contents", []):
-                    contents.append({
-                        'Key': remove_prefix(self.bucket_prefix, obj["Key"]),
-                        'LastModified': obj["LastModified"].isoformat(),
-                        'ETag': obj.get("ETag"),
-                        'Size': obj.get("Size"),
-                        'StorageClass': obj.get("StorageClass")
-                    })
+            response = await self.client.list_objects_v2(**params)
+            next_token = remove_prefix(self.bucket_prefix, response.get("NextContinuationToken", ""))
+            is_truncated = "true" if response.get("IsTruncated", False) else "false"
 
-                common_prefixes = []
-                for cp in response.get("CommonPrefixes", []):
-                    common_prefix = remove_prefix(self.bucket_prefix, cp["Prefix"])
-                    common_prefixes.append(common_prefix)
+            contents = []
+            for obj in response.get("Contents", []):
+                contents.append({
+                    'Key': remove_prefix(self.bucket_prefix, obj["Key"]),
+                    'LastModified': obj["LastModified"].isoformat(),
+                    'ETag': obj.get("ETag"),
+                    'Size': obj.get("Size"),
+                    'StorageClass': obj.get("StorageClass")
+                })
 
-                kwargs = {
-                    'Name': self.target_name,
-                    'Prefix': prefix,
-                    'Delimiter': delimiter,
-                    'MaxKeys': max_keys,
-                    'EncodingType': encoding_type,
-                    'KeyCount': response.get("KeyCount", 0),
-                    'IsTruncated': is_truncated,
-                    'ContinuationToken': continuation_token,
-                    'NextContinuationToken': next_token,
-                    'StartAfter': start_after
-                }
+            common_prefixes = []
+            for cp in response.get("CommonPrefixes", []):
+                common_prefix = remove_prefix(self.bucket_prefix, cp["Prefix"])
+                common_prefixes.append(common_prefix)
 
-                xml = get_list_xml(contents, common_prefixes, url_encode=False, **kwargs)
-                return Response(content=xml, media_type="application/xml")
+            kwargs = {
+                'Name': self.target_name,
+                'Prefix': prefix,
+                'Delimiter': delimiter,
+                'MaxKeys': max_keys,
+                'EncodingType': encoding_type,
+                'KeyCount': response.get("KeyCount", 0),
+                'IsTruncated': is_truncated,
+                'ContinuationToken': continuation_token,
+                'NextContinuationToken': next_token,
+                'StartAfter': start_after
+            }
 
-            except Exception as e:
-                return handle_s3_exception(e, key=prefix)
+            xml = get_list_xml(contents, common_prefixes, url_encode=False, **kwargs)
+            return Response(content=xml, media_type="application/xml")
+
+        except Exception as e:
+            return handle_s3_exception(e, key=prefix)
 
 
 # Adapted from https://stackoverflow.com/questions/69617252/response-file-stream-from-s3-fastapi
@@ -209,7 +252,7 @@ class S3Stream(StreamingResponse):
     """
     def __init__(
             self,
-            client_creator: typing.Callable,
+            client: typing.Any,
             content: typing.Any = None,
             status_code: int = 200,
             headers: dict = None,
@@ -221,7 +264,7 @@ class S3Stream(StreamingResponse):
             range_header: str = None
     ):
         super(S3Stream, self).__init__(content, status_code, headers, media_type, background)
-        self.client_creator = client_creator
+        self.client = client
         self.bucket = bucket
         self.key = key
         self.real_key = real_key
@@ -241,52 +284,53 @@ class S3Stream(StreamingResponse):
                 "more_body": False,
             })
 
-        async with self.client_creator() as client:
-            result = None
-            try:
-                # Get the object with the range specified in headers
-                get_object_params = {
-                    "Bucket": self.bucket,
-                    "Key": self.real_key,
-                }
-                if self.range_header:
-                    get_object_params["Range"] = self.range_header
+        try:
+            # Get the object with the range specified in headers
+            # Using the shared client directly - connection pool handles lifecycle
+            get_object_params = {
+                "Bucket": self.bucket,
+                "Key": self.real_key,
+            }
+            if self.range_header:
+                get_object_params["Range"] = self.range_header
 
-                result = await client.get_object(**get_object_params)
-                res_headers = result["ResponseMetadata"]["HTTPHeaders"]
+            result = await self.client.get_object(**get_object_params)
+            res_headers = result["ResponseMetadata"]["HTTPHeaders"]
 
-                # Determine if this is a Range result
-                if "content-range" in res_headers:
-                    self.status_code = 206 # Partial Content
-                    self.raw_headers.append((b"content-range",
-                        res_headers["content-range"].encode('utf-8')))
-                    
-                if "content-length" in res_headers:
-                    self.raw_headers.append((b"content-length",
-                        res_headers["content-length"].encode('utf-8')))
+            # Determine if this is a Range result
+            if "content-range" in res_headers:
+                self.status_code = 206 # Partial Content
+                self.raw_headers.append((b"content-range",
+                    res_headers["content-range"].encode('utf-8')))
 
-                await send({
-                    "type": "http.response.start",
-                    "status": self.status_code,
-                    "headers": self.raw_headers,
-                })
+            if "content-length" in res_headers:
+                self.raw_headers.append((b"content-length",
+                    res_headers["content-length"].encode('utf-8')))
 
-                async for chunk in result["Body"]:
+            await send({
+                "type": "http.response.start",
+                "status": self.status_code,
+                "headers": self.raw_headers,
+            })
 
-                    if not isinstance(chunk, bytes):
-                        chunk = chunk.encode(self.charset)
+            # Stream the body - connection from pool stays active during streaming
+            # but is limited by connector_args (max 30 per host)
+            async for chunk in result["Body"]:
 
-                    await send({
-                        "type": "http.response.body",
-                        "body": chunk,
-                        "more_body": True
-                    })
+                if not isinstance(chunk, bytes):
+                    chunk = chunk.encode(self.charset)
 
                 await send({
                     "type": "http.response.body",
-                    "body": b"",
-                    "more_body": False})
+                    "body": chunk,
+                    "more_body": True
+                })
 
-            except Exception as e:
-                r = handle_s3_exception(e, self.key)
-                await send_response(r)
+            await send({
+                "type": "http.response.body",
+                "body": b"",
+                "more_body": False})
+
+        except Exception as e:
+            r = handle_s3_exception(e, self.key)
+            await send_response(r)

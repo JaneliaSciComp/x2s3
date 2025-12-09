@@ -91,6 +91,22 @@ def create_app(settings):
         logger.info(f"Server ready with {len(app.clients)} targets")
 
 
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        """Runs when the service is shutting down.
+           Closes all proxy client connections properly.
+        """
+        logger.info("Shutting down, closing client connections...")
+        for target_name, client in app.clients.items():
+            if hasattr(client, '__aexit__'):
+                try:
+                    await client.__aexit__(None, None, None)
+                    logger.debug(f"Closed client for target: {target_name}")
+                except Exception as e:
+                    logger.error(f"Error closing client for {target_name}: {e}")
+        logger.info("All clients closed")
+
+
     def get_client(target_name):
         target_key = target_name.lower()
         if target_key in app.clients:
