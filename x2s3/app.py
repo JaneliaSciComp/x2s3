@@ -324,7 +324,7 @@ def create_app(settings):
                 raise HTTPException(status_code=500, detail="Client for target bucket not found")
 
             return await client.head_object(target_path)
-        except:
+        except Exception:
             logger.opt(exception=sys.exc_info()).info("Error requesting head")
             return get_error_response(500, "InternalError", "Error requesting HEAD", path)
 
