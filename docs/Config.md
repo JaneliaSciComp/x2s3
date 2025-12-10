@@ -35,10 +35,30 @@ Each target may have the following properties:
         * `endpoint`: URI of the S3 endpoint to use
         * `access_key_path`: Path to the S3 access key (for private buckets)
         * `secret_key_path`: Path to the S3 secret key (for private buckets)
-        * `max_pool_connections`: Maximum number of connections in the pool (default: 30)
+        * `config`: Botocore configuration options (see below)
     * *file*: Local filesystem targets. Options:
         * `path`: Path to the root
         * `calculate_etags`: If true, then the etags will be calculated by hashing the content of each file. This is much more expensive and may not be needed for all use cases.
+
+### Botocore Config Options
+
+The `config` option for aioboto targets accepts any [botocore Config](https://botocore.amazonaws.com/v1/documentation/api/latest/reference/config.html) parameter. Common options include:
+
+* `max_pool_connections`: Maximum connections in the pool (default: 30)
+* `connect_timeout`: Timeout for connection attempts in seconds
+* `read_timeout`: Timeout for read operations in seconds
+* `retries`: Retry configuration dict (e.g., `{max_attempts: 3}`)
+* `proxies`: Proxy configuration dict
+
+Example:
+```yaml
+config:
+  max_pool_connections: 50
+  connect_timeout: 10
+  read_timeout: 30
+  retries:
+    max_attempts: 3
+```
 
 ## Example Configuration
 
@@ -49,17 +69,20 @@ ui: true
 # Global defaults for all clients of each type
 client_options:
   aioboto:
-    max_pool_connections: 50
+    config:
+      max_pool_connections: 50
+      connect_timeout: 10
+      read_timeout: 30
 
 targets:
-  # Public S3 bucket with default pool size from client_options
+  # Public S3 bucket using global defaults
   - name: public-data
     client: aioboto
     options:
       bucket: my-public-bucket
       endpoint: https://s3.amazonaws.com
 
-  # Private S3 bucket with custom pool size (overrides global default)
+  # Private S3 bucket with custom config (overrides global defaults)
   - name: private-data
     client: aioboto
     options:
@@ -67,7 +90,10 @@ targets:
       endpoint: https://s3.amazonaws.com
       access_key_path: /var/x2s3/access_key
       secret_key_path: /var/x2s3/secret_key
-      max_pool_connections: 100
+      config:
+        max_pool_connections: 100
+        retries:
+          max_attempts: 5
 
   # Local filesystem
   - name: local-files

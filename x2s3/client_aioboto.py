@@ -89,14 +89,21 @@ class AiobotoProxyClient(ProxyClient):
         # Create shared session and configure connection pooling
         self.session = get_session()
 
-        # Configure AioConfig with connection pool limits
-        conf_kwargs = {}
+        # Build AioConfig from user-provided options
+        # Start with defaults
+        conf_kwargs = {
+            'max_pool_connections': 30,  # Default to prevent FD exhaustion
+        }
+
+        # Merge user-provided botocore config options (can override defaults)
+        # See: https://botocore.amazonaws.com/v1/documentation/api/latest/reference/config.html
+        user_config = kwargs.get('config', {})
+        if isinstance(user_config, dict):
+            conf_kwargs.update(user_config)
+
+        # Force unsigned requests for anonymous access (cannot be overridden)
         if self.anonymous:
             conf_kwargs['signature_version'] = botocore.UNSIGNED
-
-        # Limit connections to prevent file descriptor exhaustion
-        # max_pool_connections limits the connection pool size (default: 30)
-        conf_kwargs['max_pool_connections'] = kwargs.get('max_pool_connections', 30)
 
         self.conf = AioConfig(**conf_kwargs)
         self.client = None  # Will be initialized on first use
