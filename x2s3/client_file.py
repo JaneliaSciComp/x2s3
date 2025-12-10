@@ -103,7 +103,8 @@ def file_iterator(handle: FileObjectHandle):
     """
     is_large = handle.content_length is not None and handle.content_length >= LARGE_TRANSFER_THRESHOLD
     if is_large:
-        logger.info(f"Large stream start: key={handle.key}, content_length={handle.content_length}")
+        logger.info(f"Large stream start: target={handle.target_name}, key={handle.key}, content_length={handle.content_length}")
+    completed = False
     try:
         fh = handle.file_handle
         fh.seek(handle.start)
@@ -118,13 +119,16 @@ def file_iterator(handle: FileObjectHandle):
                     break
                 yield chunk
                 remaining -= len(chunk)
+        completed = True
         if is_large:
-            logger.info(f"Large stream done: key={handle.key}, content_length={handle.content_length}")
+            logger.info(f"Large stream done: target={handle.target_name}, key={handle.key}, content_length={handle.content_length}")
     except Exception as e:
         if is_large:
-            logger.warning(f"Large stream error: key={handle.key}, content_length={handle.content_length}, error={e}")
+            logger.warning(f"Large stream error: target={handle.target_name}, key={handle.key}, content_length={handle.content_length}, error={e}")
         raise
     finally:
+        if is_large and not completed:
+            logger.warning(f"Large stream cancelled: target={handle.target_name}, key={handle.key}, content_length={handle.content_length}")
         handle.close()
 
 
@@ -232,6 +236,7 @@ class FileProxyClient(ProxyClient):
                 headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
 
                 return FileObjectHandle(
+                    target_name=self.target_name,
                     key=key,
                     status_code=206,  # Partial Content
                     headers=headers,
@@ -245,6 +250,7 @@ class FileProxyClient(ProxyClient):
                 # Full content
                 headers["Content-Length"] = str(file_size)
                 return FileObjectHandle(
+                    target_name=self.target_name,
                     key=key,
                     status_code=200,
                     headers=headers,

@@ -212,6 +212,7 @@ class AiobotoProxyClient(ProxyClient):
                 content_length = int(res_headers["content-length"])
 
             return S3ObjectHandle(
+                target_name=self.target_name,
                 key=key,
                 status_code=status_code,
                 headers=headers,
@@ -231,6 +232,7 @@ class AiobotoProxyClient(ProxyClient):
             status_code=handle.status_code,
             headers=handle.headers,
             media_type=handle.media_type,
+            target_name=handle.target_name,
             key=handle.key,
             content_length=handle.content_length,
         )
@@ -340,11 +342,13 @@ class S3Stream(StreamingResponse):
             headers: dict = None,
             media_type: str = None,
             background: BackgroundTask = None,
+            target_name: str = None,
             key: str = None,
             content_length: int = None,
     ):
         super(S3Stream, self).__init__(content, status_code, headers, media_type, background)
         self.body = body
+        self.target_name = target_name
         self.key = key
         self.content_length = content_length
 
@@ -359,10 +363,11 @@ class S3Stream(StreamingResponse):
         })
 
         if is_large:
-            logger.info(f"Large stream start: key={self.key}, content_length={self.content_length}")
+            logger.info(f"Large stream start: target={self.target_name}, key={self.key}, content_length={self.content_length}")
 
         # Stream the body - connection from pool stays active during streaming
         # Wrap in try/finally to ensure cleanup on client cancellation
+        completed = False
         try:
             async for chunk in body:
 
@@ -380,15 +385,18 @@ class S3Stream(StreamingResponse):
                 "body": b"",
                 "more_body": False})
 
+            completed = True
             if is_large:
-                logger.info(f"Large stream done: key={self.key}, content_length={self.content_length}")
+                logger.info(f"Large stream done: target={self.target_name}, key={self.key}, content_length={self.content_length}")
 
         except Exception as e:
             if is_large:
-                logger.warning(f"Large stream error: key={self.key}, content_length={self.content_length}, error={e}")
+                logger.warning(f"Large stream error: target={self.target_name}, key={self.key}, content_length={self.content_length}, error={e}")
             raise
 
         finally:
+            if is_large and not completed:
+                logger.warning(f"Large stream cancelled: target={self.target_name}, key={self.key}, content_length={self.content_length}")
             # Always close body to release connection back to pool
             # This ensures cleanup even when client cancels mid-stream
             if body is not None and hasattr(body, 'close'):

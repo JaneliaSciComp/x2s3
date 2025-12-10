@@ -9,6 +9,7 @@ class ObjectHandle:
     Client implementations should subclass this to add their
     specific content source references.
     """
+    target_name: str
     key: str
     status_code: int
     headers: dict
