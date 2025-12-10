@@ -37,9 +37,16 @@ def handle_s3_exception(e, key=None):
     """
     if isinstance(e, (NoCredentialsError, PartialCredentialsError)):
         logger.opt(exception=sys.exc_info()).error("AWS credentials not configured properly")
-        return JSONResponse({"error":"AWS credentials not configured properly"}, status_code=408)
+        # 500: Server misconfiguration, not client's fault
+        return JSONResponse({"error": "AWS credentials not configured properly"}, status_code=500)
+    elif isinstance(e, botocore.exceptions.ConnectTimeoutError):
+        logger.warning(f"Connection timeout to upstream S3: {e}")
+        # 504: Gateway Timeout - proxy couldn't connect to upstream
+        return JSONResponse({"error": "Connection to upstream endpoint timed out"}, status_code=504)
     elif isinstance(e, botocore.exceptions.ReadTimeoutError):
-        return JSONResponse({"error":"Upstream endpoint timed out"}, status_code=408)
+        logger.warning(f"Read timeout from upstream S3: {e}")
+        # 504: Gateway Timeout - proxy didn't get timely response from upstream
+        return JSONResponse({"error": "Upstream endpoint timed out"}, status_code=504)
     elif isinstance(e, botocore.exceptions.ClientError):
         status_code = e.response['ResponseMetadata']['HTTPStatusCode']
         error = e.response['Error']
@@ -52,7 +59,7 @@ def handle_s3_exception(e, key=None):
             return get_error_response(status_code, error_code, message, resource)
     else:
         logger.opt(exception=sys.exc_info()).error("Error communicating with AWS S3")
-        return JSONResponse({"error":"Error communicating with AWS S3"}, status_code=500)
+        return JSONResponse({"error": "Error communicating with AWS S3"}, status_code=500)
 
 
 class AiobotoProxyClient(ProxyClient):
