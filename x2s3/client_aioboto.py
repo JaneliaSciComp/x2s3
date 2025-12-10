@@ -22,6 +22,14 @@ from x2s3.client import ProxyClient, ObjectHandle
 class S3ObjectHandle(ObjectHandle):
     """Handle for S3-based object storage."""
     body: Any = None  # The S3 response body stream
+    _closed: bool = False
+
+    def close(self):
+        """Close the body stream to release the connection back to pool."""
+        if not self._closed and self.body is not None:
+            if hasattr(self.body, 'close'):
+                self.body.close()
+            self._closed = True
 
 
 def handle_s3_exception(e, key=None):
@@ -216,7 +224,12 @@ class AiobotoProxyClient(ProxyClient):
         """Convenience method that combines open_object() and stream_object()."""
         result = await self.open_object(key, range_header)
         if isinstance(result, S3ObjectHandle):
-            return self.stream_object(result)
+            try:
+                return self.stream_object(result)
+            except Exception:
+                # Ensure body is closed if stream_object fails
+                result.close()
+                raise
         return result  # Error response
 
 
