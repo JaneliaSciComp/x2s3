@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from functools import cache
 
 from pathlib import Path
@@ -10,11 +10,15 @@ from pydantic_settings import (
     YamlConfigSettingsSource
 )
 
+# Type alias for client options dictionaries
+OptionsDict = Dict[str, Any]
+
+
 class Target(BaseModel):
     name: str
     browseable: bool = True
     client: str = "aioboto"
-    options: Dict[str,str] = {}
+    options: OptionsDict = {}
 
 
 class Settings(BaseSettings):
@@ -30,6 +34,7 @@ class Settings(BaseSettings):
     base_url: Optional[HttpUrl] = None
     local_path: Optional[Path] = None
     local_name: str = 'local'
+    client_options: Dict[str, OptionsDict] = {}
     targets: List[Target] = []
     target_map: Dict[str, Target] = {}
 
@@ -60,6 +65,14 @@ class Settings(BaseSettings):
             if key in target_map:
                 return target_map[key]
         return None
+
+    def get_merged_client_options(self, client_type: str, target_options: OptionsDict) -> OptionsDict:
+        """Merge global client options with target-specific options.
+
+        Target options take precedence over global options.
+        """
+        global_opts = self.client_options.get(client_type, {})
+        return {**global_opts, **target_options}
 
   
     @classmethod

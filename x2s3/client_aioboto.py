@@ -95,8 +95,8 @@ class AiobotoProxyClient(ProxyClient):
             conf_kwargs['signature_version'] = botocore.UNSIGNED
 
         # Limit connections to prevent file descriptor exhaustion
-        # max_pool_connections limits the connection pool size
-        conf_kwargs['max_pool_connections'] = 30
+        # max_pool_connections limits the connection pool size (default: 30)
+        conf_kwargs['max_pool_connections'] = kwargs.get('max_pool_connections', 30)
 
         self.conf = AioConfig(**conf_kwargs)
         self.client = None  # Will be initialized on first use

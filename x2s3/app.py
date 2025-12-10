@@ -92,8 +92,13 @@ def create_app(settings):
                 'target_name': target_name,
             }
 
+            # Merge global client options with target-specific options
+            merged_options = app.settings.get_merged_client_options(
+                target_config.client, target_config.options)
+            logger.debug(f"Creating {target_config.client} client for {target_name} with options: {merged_options}")
+
             client = client_registry.client(target_config.client,
-                proxy_kwargs, **target_config.options)
+                proxy_kwargs, **merged_options)
 
             if target_key in app.clients:
                 logger.warning(f"Overriding target key: {target_key}")
