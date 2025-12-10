@@ -260,7 +260,7 @@ def create_app(settings):
                                 delimiter: Optional[str] = Query(None, alias="delimiter"),
                                 encoding_type: Optional[str] = Query(None, alias="encoding-type"),
                                 fetch_owner: Optional[bool] = Query(None, alias="fetch-owner"),
-                                max_keys: Optional[int] = Query(1000, alias="max-keys"),
+                                max_keys: Optional[int] = Query(1000, alias="max-keys", ge=1, le=1000),
                                 prefix: Optional[str] = Query(None, alias="prefix"),
                                 start_after: Optional[str] = Query(None, alias="start-after")):
 
