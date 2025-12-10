@@ -3,7 +3,7 @@ import sys
 from dataclasses import dataclass
 from hashlib import md5
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import BinaryIO, Optional, Tuple
 from typing_extensions import override
 
 from loguru import logger
@@ -16,9 +16,15 @@ from x2s3.client import ProxyClient, ObjectHandle
 @dataclass
 class FileObjectHandle(ObjectHandle):
     """Handle for file-based object storage."""
-    file_path: Path = None
+    file_handle: BinaryIO = None
     start: int = 0
     end: Optional[int] = None
+
+    def close(self):
+        """Close the file handle to release resources."""
+        if self.file_handle is not None:
+            self.file_handle.close()
+            self.file_handle = None
 
 
 STATIC_ETAG = '"11111111111111111111111111111111"'
@@ -83,27 +89,31 @@ def parse_range_header(range_header: str, file_size: int) -> Optional[Tuple[int,
         return None
 
 
-def file_iterator(file_path: Path, start: int = 0, end: Optional[int] = None):
-    """Open a file in binary mode and stream the content.
-    
+def file_iterator(file_handle: BinaryIO, start: int = 0, end: Optional[int] = None):
+    """Stream content from an open file handle.
+
     Args:
-        file_path: Path to the file to stream
+        file_handle: Open file handle in binary mode
         start: Starting byte position
         end: Ending byte position (inclusive), or None for end of file
+
+    Note: The file handle is closed when iteration completes or on error.
     """
-    with open(file_path, "rb") as file:
-        file.seek(start)
+    try:
+        file_handle.seek(start)
         if end is None:
-            yield from file
+            yield from file_handle
         else:
             remaining = end - start + 1
             while remaining > 0:
                 chunk_size = min(8192, remaining)
-                chunk = file.read(chunk_size)
+                chunk = file_handle.read(chunk_size)
                 if not chunk:
                     break
                 yield chunk
                 remaining -= len(chunk)
+    finally:
+        file_handle.close()
 
 
 # From https://teppen.io/2018/10/23/aws_s3_verify_etags/
@@ -167,6 +177,7 @@ class FileProxyClient(ProxyClient):
     @override
     async def open_object(self, key: str, range_header: str = None):
         """Open a file object and return a handle for streaming."""
+        file_handle = None
         try:
             path = self._safe_path(key)
             if path is None:
@@ -183,7 +194,9 @@ class FileProxyClient(ProxyClient):
             if content_type == 'application/octet-stream':
                 headers['Content-Disposition'] = f'attachment; filename="{filename}"'
 
-            stats = os.stat(path)
+            # Open file and use fstat for atomic metadata (avoids TOCTOU race)
+            file_handle = open(path, "rb")
+            stats = os.fstat(file_handle.fileno())
             file_size = stats.st_size
             headers["Last-Modified"] = format_timestamp_s3(stats.st_mtime)
 
@@ -192,6 +205,7 @@ class FileProxyClient(ProxyClient):
                 range_result = parse_range_header(range_header, file_size)
                 if range_result is None:
                     # Invalid range, return 416 Range Not Satisfiable
+                    file_handle.close()
                     headers["Content-Range"] = f"bytes */{file_size}"
                     return Response(
                         status_code=416,
@@ -211,7 +225,7 @@ class FileProxyClient(ProxyClient):
                     headers=headers,
                     media_type=content_type,
                     content_length=content_length,
-                    file_path=Path(path),
+                    file_handle=file_handle,
                     start=start,
                     end=end
                 )
@@ -224,19 +238,21 @@ class FileProxyClient(ProxyClient):
                     headers=headers,
                     media_type=content_type,
                     content_length=file_size,
-                    file_path=Path(path),
+                    file_handle=file_handle,
                     start=0,
                     end=None
                 )
 
         except Exception as e:
+            if file_handle is not None:
+                file_handle.close()
             return handle_exception(e, key)
 
     @override
     def stream_object(self, handle: FileObjectHandle):
         """Stream content from an opened file object handle."""
         return StreamingResponse(
-            file_iterator(handle.file_path, handle.start, handle.end),
+            file_iterator(handle.file_handle, handle.start, handle.end),
             status_code=handle.status_code,
             headers=handle.headers,
             media_type=handle.media_type
@@ -247,7 +263,12 @@ class FileProxyClient(ProxyClient):
         """Convenience method that combines open_object() and stream_object()."""
         result = await self.open_object(key, range_header)
         if isinstance(result, FileObjectHandle):
-            return self.stream_object(result)
+            try:
+                return self.stream_object(result)
+            except Exception:
+                # Ensure file is closed if stream_object fails
+                result.close()
+                raise
         return result  # Error response
 
 
