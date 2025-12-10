@@ -231,6 +231,8 @@ class AiobotoProxyClient(ProxyClient):
             status_code=handle.status_code,
             headers=handle.headers,
             media_type=handle.media_type,
+            key=handle.key,
+            content_length=handle.content_length,
         )
 
     @override
@@ -322,6 +324,10 @@ class AiobotoProxyClient(ProxyClient):
             return handle_s3_exception(e, key=prefix)
 
 
+# Threshold for logging large transfers (10 MB)
+LARGE_TRANSFER_THRESHOLD = 10 * 1024 * 1024
+
+
 # Adapted from https://stackoverflow.com/questions/69617252/response-file-stream-from-s3-fastapi
 class S3Stream(StreamingResponse):
     """Stream content from an S3 body stream."""
@@ -334,18 +340,26 @@ class S3Stream(StreamingResponse):
             headers: dict = None,
             media_type: str = None,
             background: BackgroundTask = None,
+            key: str = None,
+            content_length: int = None,
     ):
         super(S3Stream, self).__init__(content, status_code, headers, media_type, background)
         self.body = body
+        self.key = key
+        self.content_length = content_length
 
     async def stream_response(self, send) -> None:
         body = self.body
+        is_large = self.content_length is not None and self.content_length >= LARGE_TRANSFER_THRESHOLD
 
         await send({
             "type": "http.response.start",
             "status": self.status_code,
             "headers": self.raw_headers,
         })
+
+        if is_large:
+            logger.info(f"Large stream start: key={self.key}, content_length={self.content_length}")
 
         # Stream the body - connection from pool stays active during streaming
         # Wrap in try/finally to ensure cleanup on client cancellation
@@ -365,6 +379,14 @@ class S3Stream(StreamingResponse):
                 "type": "http.response.body",
                 "body": b"",
                 "more_body": False})
+
+            if is_large:
+                logger.info(f"Large stream done: key={self.key}, content_length={self.content_length}")
+
+        except Exception as e:
+            if is_large:
+                logger.warning(f"Large stream error: key={self.key}, content_length={self.content_length}, error={e}")
+            raise
 
         finally:
             # Always close body to release connection back to pool

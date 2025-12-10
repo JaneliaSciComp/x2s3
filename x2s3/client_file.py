@@ -89,16 +89,26 @@ def parse_range_header(range_header: str, file_size: int) -> Optional[Tuple[int,
         return None
 
 
-def file_iterator(file_handle: BinaryIO, start: int = 0, end: Optional[int] = None):
+# Threshold for logging large transfers (10 MB)
+LARGE_TRANSFER_THRESHOLD = 10 * 1024 * 1024
+
+
+def file_iterator(file_handle: BinaryIO, start: int = 0, end: Optional[int] = None,
+                  key: str = None, content_length: int = None):
     """Stream content from an open file handle.
 
     Args:
         file_handle: Open file handle in binary mode
         start: Starting byte position
         end: Ending byte position (inclusive), or None for end of file
+        key: Object key for logging purposes
+        content_length: Expected content length for logging purposes
 
     Note: The file handle is closed when iteration completes or on error.
     """
+    is_large = content_length is not None and content_length >= LARGE_TRANSFER_THRESHOLD
+    if is_large:
+        logger.info(f"Large stream start: key={key}, content_length={content_length}")
     try:
         file_handle.seek(start)
         if end is None:
@@ -112,6 +122,12 @@ def file_iterator(file_handle: BinaryIO, start: int = 0, end: Optional[int] = No
                     break
                 yield chunk
                 remaining -= len(chunk)
+        if is_large:
+            logger.info(f"Large stream done: key={key}, content_length={content_length}")
+    except Exception as e:
+        if is_large:
+            logger.warning(f"Large stream error: key={key}, content_length={content_length}, error={e}")
+        raise
     finally:
         file_handle.close()
 
@@ -252,7 +268,8 @@ class FileProxyClient(ProxyClient):
     def stream_object(self, handle: FileObjectHandle):
         """Stream content from an opened file object handle."""
         return StreamingResponse(
-            file_iterator(handle.file_handle, handle.start, handle.end),
+            file_iterator(handle.file_handle, handle.start, handle.end,
+                          key=handle.key, content_length=handle.content_length),
             status_code=handle.status_code,
             headers=handle.headers,
             media_type=handle.media_type
