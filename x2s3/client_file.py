@@ -52,9 +52,9 @@ def parse_range_header(range_header: str, file_size: int) -> Optional[Tuple[int,
     try:
         range_spec = range_header[6:]  # Remove 'bytes=' prefix
         if ',' in range_spec:
-            # Multiple ranges not supported, use first range
-            range_spec = range_spec.split(',')[0]
-        
+            # Multiple ranges not supported, return None to trigger 416
+            return None
+
         if '-' not in range_spec:
             return None
             
