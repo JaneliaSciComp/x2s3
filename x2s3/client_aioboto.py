@@ -79,11 +79,21 @@ class AiobotoProxyClient(ProxyClient):
             access_key_path = kwargs['access_key_path']
             secret_key_path = kwargs['secret_key_path']
 
-            with open(access_key_path, 'r') as ak_file:
-                access_key = ak_file.read().strip()
+            try:
+                with open(access_key_path, 'r') as ak_file:
+                    access_key = ak_file.read().strip()
+            except FileNotFoundError:
+                raise ValueError(f"Target '{self.target_name}': access_key_path not found: {access_key_path}")
+            except PermissionError:
+                raise ValueError(f"Target '{self.target_name}': cannot read access_key_path: {access_key_path}")
 
-            with open(secret_key_path, 'r') as sk_file:
-                secret_key = sk_file.read().strip()
+            try:
+                with open(secret_key_path, 'r') as sk_file:
+                    secret_key = sk_file.read().strip()
+            except FileNotFoundError:
+                raise ValueError(f"Target '{self.target_name}': secret_key_path not found: {secret_key_path}")
+            except PermissionError:
+                raise ValueError(f"Target '{self.target_name}': cannot read secret_key_path: {secret_key_path}")
 
         self.client_kwargs = {
             'aws_access_key_id': access_key,
