@@ -93,43 +93,39 @@ def parse_range_header(range_header: str, file_size: int) -> Optional[Tuple[int,
 LARGE_TRANSFER_THRESHOLD = 10 * 1024 * 1024
 
 
-def file_iterator(file_handle: BinaryIO, start: int = 0, end: Optional[int] = None,
-                  key: str = None, content_length: int = None):
-    """Stream content from an open file handle.
+def file_iterator(handle: FileObjectHandle):
+    """Stream content from a FileObjectHandle.
 
     Args:
-        file_handle: Open file handle in binary mode
-        start: Starting byte position
-        end: Ending byte position (inclusive), or None for end of file
-        key: Object key for logging purposes
-        content_length: Expected content length for logging purposes
+        handle: FileObjectHandle containing file handle and range info
 
     Note: The file handle is closed when iteration completes or on error.
     """
-    is_large = content_length is not None and content_length >= LARGE_TRANSFER_THRESHOLD
+    is_large = handle.content_length is not None and handle.content_length >= LARGE_TRANSFER_THRESHOLD
     if is_large:
-        logger.info(f"Large stream start: key={key}, content_length={content_length}")
+        logger.info(f"Large stream start: key={handle.key}, content_length={handle.content_length}")
     try:
-        file_handle.seek(start)
-        if end is None:
-            yield from file_handle
+        fh = handle.file_handle
+        fh.seek(handle.start)
+        if handle.end is None:
+            yield from fh
         else:
-            remaining = end - start + 1
+            remaining = handle.end - handle.start + 1
             while remaining > 0:
                 chunk_size = min(8192, remaining)
-                chunk = file_handle.read(chunk_size)
+                chunk = fh.read(chunk_size)
                 if not chunk:
                     break
                 yield chunk
                 remaining -= len(chunk)
         if is_large:
-            logger.info(f"Large stream done: key={key}, content_length={content_length}")
+            logger.info(f"Large stream done: key={handle.key}, content_length={handle.content_length}")
     except Exception as e:
         if is_large:
-            logger.warning(f"Large stream error: key={key}, content_length={content_length}, error={e}")
+            logger.warning(f"Large stream error: key={handle.key}, content_length={handle.content_length}, error={e}")
         raise
     finally:
-        file_handle.close()
+        handle.close()
 
 
 # From https://teppen.io/2018/10/23/aws_s3_verify_etags/
@@ -268,8 +264,7 @@ class FileProxyClient(ProxyClient):
     def stream_object(self, handle: FileObjectHandle):
         """Stream content from an opened file object handle."""
         return StreamingResponse(
-            file_iterator(handle.file_handle, handle.start, handle.end,
-                          key=handle.key, content_length=handle.content_length),
+            file_iterator(handle),
             status_code=handle.status_code,
             headers=handle.headers,
             media_type=handle.media_type
