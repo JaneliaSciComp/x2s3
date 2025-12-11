@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from loguru import logger
@@ -31,33 +32,10 @@ except ImportError:
 
 def create_app(settings):
 
-    app = FastAPI()
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["GET","HEAD"],
-        allow_headers=["*"],
-        expose_headers=["Range", "Content-Range"],
-    )
-    app.mount("/static", StaticFiles(directory="static"), name="static")
-    templates = Jinja2Templates(directory="templates")
-
-    @app.exception_handler(StarletteHTTPException)
-    async def http_exception_handler(request, exc):
-        return get_error_response(exc.status_code, 'InternalError', exc.detail, request.url.path)
-
-    @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(request, exc):
-        error = exc.errors()[0]
-        return get_error_response(400, 'InvalidArgument', error['msg'], request.url.path)
-
-
-    @app.on_event("startup")
-    async def startup_event():
-        """ Runs once when the service is first starting.
-            Reads the configuration and sets up the proxy clients. 
-        """
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        """Lifespan context manager for startup and shutdown events."""
+        # Startup
         if callable(settings):
             app.settings = settings()
         else:
@@ -108,12 +86,9 @@ def create_app(settings):
 
         logger.info(f"Server ready with {len(app.clients)} targets")
 
+        yield
 
-    @app.on_event("shutdown")
-    async def shutdown_event():
-        """Runs when the service is shutting down.
-           Closes all proxy client connections properly.
-        """
+        # Shutdown
         logger.info("Shutting down, closing client connections...")
         for target_name, client in app.clients.items():
             if hasattr(client, 'close'):
@@ -123,6 +98,27 @@ def create_app(settings):
                 except Exception as e:
                     logger.error(f"Error closing client for {target_name}: {e}")
         logger.info("All clients closed")
+
+    app = FastAPI(lifespan=lifespan)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["GET","HEAD"],
+        allow_headers=["*"],
+        expose_headers=["Range", "Content-Range"],
+    )
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+    templates = Jinja2Templates(directory="templates")
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request, exc):
+        return get_error_response(exc.status_code, 'InternalError', exc.detail, request.url.path)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request, exc):
+        error = exc.errors()[0]
+        return get_error_response(400, 'InvalidArgument', error['msg'], request.url.path)
 
 
     def get_client(target_name):
