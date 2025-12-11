@@ -36,7 +36,6 @@ class Settings(BaseSettings):
     local_name: str = 'local'
     client_options: Dict[str, OptionsDict] = {}
     targets: List[Target] = []
-    target_map: Dict[str, Target] = {}
 
     model_config = SettingsConfigDict(
         yaml_file="config.yaml",
@@ -48,10 +47,14 @@ class Settings(BaseSettings):
 
     def __init__(self, **data) -> None:
         super().__init__(**data)
+        self._target_map_cache = None
 
 
     def get_target_map(self):
-        return {t.name.lower(): t for t in self.targets}
+        """Return cached target map, computing it on first access."""
+        if self._target_map_cache is None:
+            self._target_map_cache = {t.name.lower(): t for t in self.targets}
+        return self._target_map_cache
 
 
     def get_browseable_targets(self):
