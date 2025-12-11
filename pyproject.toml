@@ -1,6 +1,6 @@
 [project]
 name = "x2s3"
-version = "1.0.0"
+version = "1.1.0"
 description = "RESTful web service which makes any storage system X available as an S3-compatible REST API"
 readme = "README.md"
 license = { file = "LICENSE" }
