@@ -1,15 +1,34 @@
 import os
 import sys
+from dataclasses import dataclass
 from hashlib import md5
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import BinaryIO, Optional, Tuple
 from typing_extensions import override
 
 from loguru import logger
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 
 from x2s3.utils import *
-from x2s3.client import ProxyClient
+from x2s3.client import ProxyClient, ObjectHandle
+
+
+# Default buffer size for file streaming (8 KB)
+DEFAULT_BUFFER_SIZE = 8192
+
+
+@dataclass
+class FileObjectHandle(ObjectHandle):
+    """Handle for file-based object storage."""
+    file_handle: BinaryIO = None
+    start: int = 0
+    end: Optional[int] = None
+
+    def close(self):
+        """Close the file handle to release resources."""
+        if self.file_handle is not None:
+            self.file_handle.close()
+            self.file_handle = None
 
 
 STATIC_ETAG = '"11111111111111111111111111111111"'
@@ -37,9 +56,9 @@ def parse_range_header(range_header: str, file_size: int) -> Optional[Tuple[int,
     try:
         range_spec = range_header[6:]  # Remove 'bytes=' prefix
         if ',' in range_spec:
-            # Multiple ranges not supported, use first range
-            range_spec = range_spec.split(',')[0]
-        
+            # Multiple ranges not supported, return None to trigger 416
+            return None
+
         if '-' not in range_spec:
             return None
             
@@ -74,27 +93,48 @@ def parse_range_header(range_header: str, file_size: int) -> Optional[Tuple[int,
         return None
 
 
-def file_iterator(file_path: Path, start: int = 0, end: Optional[int] = None):
-    """Open a file in binary mode and stream the content.
-    
+# Threshold for logging large transfers (10 MB)
+LARGE_TRANSFER_THRESHOLD = 10 * 1024 * 1024
+
+
+def file_iterator(handle: FileObjectHandle, buffer_size: int = DEFAULT_BUFFER_SIZE):
+    """Stream content from a FileObjectHandle.
+
     Args:
-        file_path: Path to the file to stream
-        start: Starting byte position
-        end: Ending byte position (inclusive), or None for end of file
+        handle: FileObjectHandle containing file handle and range info
+        buffer_size: Size of chunks to read at a time
+
+    Note: The file handle is closed when iteration completes or on error.
     """
-    with open(file_path, "rb") as file:
-        file.seek(start)
-        if end is None:
-            yield from file
+    is_large = handle.content_length is not None and handle.content_length >= LARGE_TRANSFER_THRESHOLD
+    if is_large:
+        logger.info(f"Large stream start: target={handle.target_name}, key={handle.key}, content_length={handle.content_length}")
+    completed = False
+    try:
+        fh = handle.file_handle
+        fh.seek(handle.start)
+        if handle.end is None:
+            yield from fh
         else:
-            remaining = end - start + 1
+            remaining = handle.end - handle.start + 1
             while remaining > 0:
-                chunk_size = min(8192, remaining)
-                chunk = file.read(chunk_size)
+                chunk_size = min(buffer_size, remaining)
+                chunk = fh.read(chunk_size)
                 if not chunk:
                     break
                 yield chunk
                 remaining -= len(chunk)
+        completed = True
+        if is_large:
+            logger.info(f"Large stream done: target={handle.target_name}, key={handle.key}, content_length={handle.content_length}")
+    except Exception as e:
+        if is_large:
+            logger.warning(f"Large stream error: target={handle.target_name}, key={handle.key}, content_length={handle.content_length}, error={e}")
+        raise
+    finally:
+        if is_large and not completed:
+            logger.warning(f"Large stream cancelled: target={handle.target_name}, key={handle.key}, content_length={handle.content_length}")
+        handle.close()
 
 
 # From https://teppen.io/2018/10/23/aws_s3_verify_etags/
@@ -113,11 +153,27 @@ class FileProxyClient(ProxyClient):
         self.target_name = self.proxy_kwargs['target_name']
         self.root_path = str(Path(kwargs['path']).resolve())
         self.calculate_etags = kwargs.get('calculate_etags', False)
+        self.buffer_size = kwargs.get('buffer_size', DEFAULT_BUFFER_SIZE)
+
+    def _safe_path(self, key: str) -> Optional[str]:
+        """Resolve key to absolute path and validate it's within root_path.
+
+        Returns the safe absolute path, or None if path traversal detected.
+        """
+        # Join and resolve to absolute path
+        path = os.path.realpath(os.path.join(self.root_path, key))
+        # Ensure path is within root_path (prevent directory traversal)
+        if not path.startswith(self.root_path + os.sep) and path != self.root_path:
+            logger.warning(f"Path traversal attempt blocked: {key}")
+            return None
+        return path
 
     @override
     async def head_object(self, key: str):
         try:
-            path = os.path.join(self.root_path, key)
+            path = self._safe_path(key)
+            if path is None:
+                return get_nosuchkey_response(key)
             if not os.path.isfile(path):
                 return get_nosuchkey_response(key)
 
@@ -141,9 +197,13 @@ class FileProxyClient(ProxyClient):
 
 
     @override
-    async def get_object(self, key: str, range_header: str = None):
+    async def open_object(self, key: str, range_header: str = None):
+        """Open a file object and return a handle for streaming."""
+        file_handle = None
         try:
-            path = os.path.join(self.root_path, key)
+            path = self._safe_path(key)
+            if path is None:
+                return get_nosuchkey_response(key)
             if not os.path.isfile(path):
                 return get_nosuchkey_response(key)
 
@@ -153,10 +213,12 @@ class FileProxyClient(ProxyClient):
             content_type = guess_content_type(filename)
             headers['Content-Type'] = content_type
             headers['Accept-Ranges'] = 'bytes'
-            if content_type=='application/octet-stream':
+            if content_type == 'application/octet-stream':
                 headers['Content-Disposition'] = f'attachment; filename="{filename}"'
 
-            stats = os.stat(path)
+            # Open file and use fstat for atomic metadata (avoids TOCTOU race)
+            file_handle = open(path, "rb")
+            stats = os.fstat(file_handle.fileno())
             file_size = stats.st_size
             headers["Last-Modified"] = format_timestamp_s3(stats.st_mtime)
 
@@ -165,36 +227,73 @@ class FileProxyClient(ProxyClient):
                 range_result = parse_range_header(range_header, file_size)
                 if range_result is None:
                     # Invalid range, return 416 Range Not Satisfiable
+                    file_handle.close()
                     headers["Content-Range"] = f"bytes */{file_size}"
                     return Response(
                         status_code=416,
                         headers=headers
                     )
-                
+
                 start, end = range_result
                 content_length = end - start + 1
-                
+
                 # Set partial content headers
                 headers["Content-Length"] = str(content_length)
                 headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
-                
-                return StreamingResponse(
-                    file_iterator(Path(path), start, end),
+
+                return FileObjectHandle(
+                    target_name=self.target_name,
+                    key=key,
                     status_code=206,  # Partial Content
                     headers=headers,
-                    media_type=content_type
+                    media_type=content_type,
+                    content_length=content_length,
+                    file_handle=file_handle,
+                    start=start,
+                    end=end
                 )
             else:
                 # Full content
                 headers["Content-Length"] = str(file_size)
-                return StreamingResponse(
-                    file_iterator(Path(path)),
+                return FileObjectHandle(
+                    target_name=self.target_name,
+                    key=key,
+                    status_code=200,
                     headers=headers,
-                    media_type=content_type
+                    media_type=content_type,
+                    content_length=file_size,
+                    file_handle=file_handle,
+                    start=0,
+                    end=None
                 )
 
         except Exception as e:
+            if file_handle is not None:
+                file_handle.close()
             return handle_exception(e, key)
+
+    @override
+    def stream_object(self, handle: FileObjectHandle):
+        """Stream content from an opened file object handle."""
+        return StreamingResponse(
+            file_iterator(handle, self.buffer_size),
+            status_code=handle.status_code,
+            headers=handle.headers,
+            media_type=handle.media_type
+        )
+
+    @override
+    async def get_object(self, key: str, range_header: str = None):
+        """Convenience method that combines open_object() and stream_object()."""
+        result = await self.open_object(key, range_header)
+        if isinstance(result, FileObjectHandle):
+            try:
+                return self.stream_object(result)
+            except Exception:
+                # Ensure file is closed if stream_object fails
+                result.close()
+                raise
+        return result  # Error response
 
 
     @override
@@ -217,7 +316,11 @@ class FileProxyClient(ProxyClient):
         try:
             path = str(self.root_path)
             if real_prefix:
-                path = os.path.join(path, real_prefix)
+                path = self._safe_path(real_prefix)
+                if path is None:
+                    # Path traversal attempt - return empty listing
+                    return Response(content=get_list_xml([], [], Name=self.target_name),
+                                    media_type="application/xml")
 
             logger.debug(f"root_path: {self.root_path}, real_prefix: {real_prefix}, path: {path}")
 

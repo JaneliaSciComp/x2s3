@@ -1,8 +1,14 @@
+import logging
 import os
 import sys
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from loguru import logger
+
+# Suppress asyncio SSL connection closed warnings (common during client cancellations)
+logging.getLogger("asyncio").setLevel(logging.ERROR)
+
 from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -15,36 +21,21 @@ from x2s3.utils import *
 from x2s3 import client_registry
 from x2s3.settings import get_settings, Target
 
+# Use uvloop for better async performance
+try:
+    import uvloop
+    import asyncio
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    logger.info("uvloop event loop policy installed")
+except ImportError:
+    logger.warning("uvloop not available, using default asyncio event loop")
+
 def create_app(settings):
 
-    app = FastAPI()
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["GET","HEAD"],
-        allow_headers=["*"],
-        expose_headers=["Range", "Content-Range"],
-    )
-    app.mount("/static", StaticFiles(directory="static"), name="static")
-    templates = Jinja2Templates(directory="templates")
-
-
-    @app.exception_handler(StarletteHTTPException)
-    async def http_exception_handler(request, exc):
-        return get_error_response(exc.status_code, 'InternalError', exc.detail, request.url.path)
-
-    @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(request, exc):
-        error = exc.errors()[0]
-        return get_error_response(400, 'InvalidArgument', error['msg'], request.url.path)
-
-
-    @app.on_event("startup")
-    async def startup_event():
-        """ Runs once when the service is first starting.
-            Reads the configuration and sets up the proxy clients. 
-        """
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        """Lifespan context manager for startup and shutdown events."""
+        # Startup
         if callable(settings):
             app.settings = settings()
         else:
@@ -79,8 +70,13 @@ def create_app(settings):
                 'target_name': target_name,
             }
 
+            # Merge global client options with target-specific options
+            merged_options = app.settings.get_merged_client_options(
+                target_config.client, target_config.options)
+            logger.debug(f"Creating {target_config.client} client for {target_name} with options: {merged_options}")
+
             client = client_registry.client(target_config.client,
-                proxy_kwargs, **target_config.options)
+                proxy_kwargs, **merged_options)
 
             if target_key in app.clients:
                 logger.warning(f"Overriding target key: {target_key}")
@@ -89,6 +85,40 @@ def create_app(settings):
             logger.debug(f"Configured target {target_name}")
 
         logger.info(f"Server ready with {len(app.clients)} targets")
+
+        yield
+
+        # Shutdown
+        logger.info("Shutting down, closing client connections...")
+        for target_name, client in app.clients.items():
+            if hasattr(client, 'close'):
+                try:
+                    await client.close()
+                    logger.debug(f"Closed client for target: {target_name}")
+                except Exception as e:
+                    logger.error(f"Error closing client for {target_name}: {e}")
+        logger.info("All clients closed")
+
+    app = FastAPI(lifespan=lifespan)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["GET","HEAD"],
+        allow_headers=["*"],
+        expose_headers=["Range", "Content-Range"],
+    )
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+    templates = Jinja2Templates(directory="templates")
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request, exc):
+        return get_error_response(exc.status_code, 'InternalError', exc.detail, request.url.path)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request, exc):
+        error = exc.errors()[0]
+        return get_error_response(400, 'InvalidArgument', error['msg'], request.url.path)
 
 
     def get_client(target_name):
@@ -226,7 +256,7 @@ def create_app(settings):
                                 delimiter: Optional[str] = Query(None, alias="delimiter"),
                                 encoding_type: Optional[str] = Query(None, alias="encoding-type"),
                                 fetch_owner: Optional[bool] = Query(None, alias="fetch-owner"),
-                                max_keys: Optional[int] = Query(1000, alias="max-keys"),
+                                max_keys: Optional[int] = Query(1000, alias="max-keys", ge=1, le=1000),
                                 prefix: Optional[str] = Query(None, alias="prefix"),
                                 start_after: Optional[str] = Query(None, alias="start-after")):
 
@@ -295,7 +325,7 @@ def create_app(settings):
                 raise HTTPException(status_code=500, detail="Client for target bucket not found")
 
             return await client.head_object(target_path)
-        except:
+        except Exception:
             logger.opt(exception=sys.exc_info()).info("Error requesting head")
             return get_error_response(500, "InternalError", "Error requesting HEAD", path)
 
