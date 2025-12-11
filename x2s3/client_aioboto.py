@@ -48,14 +48,16 @@ def handle_s3_exception(e, key=None):
         # 504: Gateway Timeout - proxy didn't get timely response from upstream
         return JSONResponse({"error": "Upstream endpoint timed out"}, status_code=504)
     elif isinstance(e, botocore.exceptions.ClientError):
-        status_code = e.response['ResponseMetadata']['HTTPStatusCode']
-        error = e.response['Error']
-        error_code = error['Code'] if 'Code' in error else 'Unknown'
+        response = getattr(e, 'response', {}) or {}
+        metadata = response.get('ResponseMetadata', {})
+        status_code = metadata.get('HTTPStatusCode', 500)
+        error = response.get('Error', {})
+        error_code = error.get('Code', 'Unknown')
         if error_code == "NoSuchKey" or error_code == "404":
             return get_nosuchkey_response(key)
         else:
-            message = error['Message'] if 'Message' in error else 'Unknown'
-            resource = error['Resource'] if 'Resource' in error else 'Unknown'
+            message = error.get('Message', 'Unknown error')
+            resource = error.get('Resource', key or 'Unknown')
             return get_error_response(status_code, error_code, message, resource)
     else:
         logger.opt(exception=sys.exc_info()).error("Error communicating with AWS S3")
