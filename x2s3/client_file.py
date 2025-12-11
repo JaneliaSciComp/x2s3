@@ -13,6 +13,10 @@ from x2s3.utils import *
 from x2s3.client import ProxyClient, ObjectHandle
 
 
+# Default buffer size for file streaming (8 KB)
+DEFAULT_BUFFER_SIZE = 8192
+
+
 @dataclass
 class FileObjectHandle(ObjectHandle):
     """Handle for file-based object storage."""
@@ -93,11 +97,12 @@ def parse_range_header(range_header: str, file_size: int) -> Optional[Tuple[int,
 LARGE_TRANSFER_THRESHOLD = 10 * 1024 * 1024
 
 
-def file_iterator(handle: FileObjectHandle):
+def file_iterator(handle: FileObjectHandle, buffer_size: int = DEFAULT_BUFFER_SIZE):
     """Stream content from a FileObjectHandle.
 
     Args:
         handle: FileObjectHandle containing file handle and range info
+        buffer_size: Size of chunks to read at a time
 
     Note: The file handle is closed when iteration completes or on error.
     """
@@ -113,7 +118,7 @@ def file_iterator(handle: FileObjectHandle):
         else:
             remaining = handle.end - handle.start + 1
             while remaining > 0:
-                chunk_size = min(8192, remaining)
+                chunk_size = min(buffer_size, remaining)
                 chunk = fh.read(chunk_size)
                 if not chunk:
                     break
@@ -148,6 +153,7 @@ class FileProxyClient(ProxyClient):
         self.target_name = self.proxy_kwargs['target_name']
         self.root_path = str(Path(kwargs['path']).resolve())
         self.calculate_etags = kwargs.get('calculate_etags', False)
+        self.buffer_size = kwargs.get('buffer_size', DEFAULT_BUFFER_SIZE)
 
     def _safe_path(self, key: str) -> Optional[str]:
         """Resolve key to absolute path and validate it's within root_path.
@@ -270,7 +276,7 @@ class FileProxyClient(ProxyClient):
     def stream_object(self, handle: FileObjectHandle):
         """Stream content from an opened file object handle."""
         return StreamingResponse(
-            file_iterator(handle),
+            file_iterator(handle, self.buffer_size),
             status_code=handle.status_code,
             headers=handle.headers,
             media_type=handle.media_type

@@ -18,6 +18,7 @@ client_options:
   aioboto:
     max_pool_connections: 50
   file:
+    buffer_size: 65536  # 64 KB chunks for streaming
     calculate_etags: false
 ```
 
@@ -38,6 +39,7 @@ Each target may have the following properties:
         * `config`: Botocore configuration options (see below)
     * *file*: Local filesystem targets. Options:
         * `path`: Path to the root
+        * `buffer_size`: Size of chunks (in bytes) when streaming file content (default: 8192)
         * `calculate_etags`: If true, then the etags will be calculated by hashing the content of each file. This is much more expensive and may not be needed for all use cases.
 
 ### Botocore Config Options
@@ -100,6 +102,13 @@ targets:
     client: file
     options:
       path: /data/files
+
+  # Local filesystem with larger buffer for better throughput
+  - name: large-files
+    client: file
+    options:
+      path: /data/large-files
+      buffer_size: 131072  # 128 KB chunks
 ```
 
 ## Notes

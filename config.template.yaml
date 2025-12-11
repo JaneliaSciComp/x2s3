@@ -34,6 +34,7 @@ targets:
     client: file
     options:
       path: .
+      # buffer_size: 65536  # Optional: chunk size for streaming (default: 8192)
 
   #
   # Exposes s3://janelia-cosem-datasets at /cosem-data
