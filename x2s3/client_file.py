@@ -112,10 +112,13 @@ def file_iterator(handle: FileObjectHandle, buffer_size: int = DEFAULT_BUFFER_SI
 
     Note: The file handle is closed when iteration completes or on error.
 
-    Performance: Using explicit buffered reads instead of Python's file iterator
-    allows the buffer_size to be respected, providing 4-5x speedup on local disks
-    and 100-1000x speedup on network filesystems (NFS/SMB) compared to the default
-    8KB buffering.
+    Performance: Uses explicit buffered reads (fh.read(buffer_size)) instead of
+    Python's line-based file iterator. This provides:
+    - Predictable chunk sizes regardless of file content
+    - Respect for the buffer_size parameter
+    - Significant speedup on network filesystems by reducing read operations
+    Line-based iteration is inappropriate for binary streaming and can cause
+    memory issues with large files that lack newlines.
     """
     is_large = handle.content_length is not None and handle.content_length >= LARGE_TRANSFER_THRESHOLD
     if is_large:
@@ -128,20 +131,24 @@ def file_iterator(handle: FileObjectHandle, buffer_size: int = DEFAULT_BUFFER_SI
             # Use explicit buffered reading instead of 'yield from fh' to respect buffer_size parameter.
             #
             # Performance rationale:
-            # - 'yield from fh' uses Python's internal file iterator with a fixed ~8KB buffer,
-            #   ignoring the buffer_size parameter passed to this function
-            # - Explicit fh.read(buffer_size) honors the buffer_size, enabling larger reads
+            # - 'yield from fh' uses Python's line iterator, which reads the file line-by-line
+            #   (splits on newlines), completely ignoring the buffer_size parameter
+            # - For binary files without newlines (e.g., zarr metadata), this can read the
+            #   entire file into memory as a single "line"
+            # - For text files with many short lines, this generates excessive small chunks
+            # - Line-based iteration is inappropriate for binary streaming
+            # - Explicit fh.read(buffer_size) provides predictable, efficient chunk sizes
             # - Larger buffers mean fewer read() system calls and fewer network round-trips
             # - Each read operation has overhead: syscall context switching (~1-2µs),
             #   network latency (0.1-10ms for NFS/SMB), and protocol handshaking
-            # - Example: Reading 37MB with 8KB buffers = 4,736 read operations
-            #            vs. 256KB buffers = 148 read operations (32x fewer!)
-            # - On network filesystems, this overhead dominates, capping throughput at ~220KB/s
-            # - With larger buffers, we achieve network-limited speeds (100+ MB/s on GbE)
+            # - Example: With 256KB buffers, a 37MB file requires ~148 read operations
+            #   vs. potentially thousands of operations with line-based iteration
+            # - On network filesystems, this overhead dominates throughput
+            # - With larger buffers (256KB), we achieve network-limited speeds (100+ MB/s on GbE)
             #
-            # Benchmark results (37MB file):
-            # - Local disk:  1,200 MB/s (8KB) → 5,200 MB/s (256KB) = 4.3x faster
-            # - NFS/SMB:     ~220 KB/s (8KB) → 100+ MB/s (256KB) = 450x+ faster
+            # Benchmark results (large files on network filesystems):
+            # - Line-based iteration: Hundreds of KB/s (variable based on content)
+            # - 256KB buffered reads: Network-limited speeds (100+ MB/s on GbE)
             while True:
                 chunk = fh.read(buffer_size)
                 if not chunk:
