@@ -129,26 +129,7 @@ def file_iterator(handle: FileObjectHandle, buffer_size: int = DEFAULT_BUFFER_SI
         fh.seek(handle.start)
         if handle.end is None:
             # Use explicit buffered reading instead of 'yield from fh' to respect buffer_size parameter.
-            #
-            # Performance rationale:
-            # - 'yield from fh' uses Python's line iterator, which reads the file line-by-line
-            #   (splits on newlines), completely ignoring the buffer_size parameter
-            # - For binary files without newlines (e.g., zarr metadata), this can read the
-            #   entire file into memory as a single "line"
-            # - For text files with many short lines, this generates excessive small chunks
-            # - Line-based iteration is inappropriate for binary streaming
-            # - Explicit fh.read(buffer_size) provides predictable, efficient chunk sizes
-            # - Larger buffers mean fewer read() system calls and fewer network round-trips
-            # - Each read operation has overhead: syscall context switching (~1-2µs),
-            #   network latency (0.1-10ms for NFS/SMB), and protocol handshaking
-            # - Example: With 256KB buffers, a 37MB file requires ~148 read operations
-            #   vs. potentially thousands of operations with line-based iteration
-            # - On network filesystems, this overhead dominates throughput
-            # - With larger buffers (256KB), we achieve network-limited speeds (100+ MB/s on GbE)
-            #
-            # Benchmark results (large files on network filesystems):
-            # - Line-based iteration: Hundreds of KB/s (variable based on content)
-            # - 256KB buffered reads: Network-limited speeds (100+ MB/s on GbE)
+            # See commit message for detailed performance rationale.
             while True:
                 chunk = fh.read(buffer_size)
                 if not chunk:
