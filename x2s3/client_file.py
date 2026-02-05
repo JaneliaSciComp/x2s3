@@ -126,10 +126,10 @@ def file_iterator(handle: FileObjectHandle, buffer_size: int = DEFAULT_BUFFER_SI
     try:
         fh = handle.file_handle
         fh.seek(handle.start)
-        # For unbounded reads (handle.end is None), use sys.maxsize as a sentinel value that
-        # will never be reached - the EOF check (if not chunk) will always terminate first.
-        # sys,maxsize equates to 9.2EB. At 100 Gbps network speed, transferring 9.2 EB would take ~23 years.
-        remaining = sys.maxsize if handle.end is None else (handle.end - handle.start + 1)
+        # handle.content_length contains the number of bytes to read:
+        # - For full file reads: content_length = file_size
+        # - For range requests: content_length = end - start + 1
+        remaining = handle.content_length
         while remaining > 0:
             chunk_size = min(buffer_size, remaining)
             chunk = fh.read(chunk_size)
