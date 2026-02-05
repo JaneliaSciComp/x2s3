@@ -13,12 +13,11 @@ from x2s3.utils import *
 from x2s3.client import ProxyClient, ObjectHandle
 
 
-# Default buffer size for file streaming (8 KB)
-# Note: This conservative default works for all filesystems, but larger buffers
-# (64KB-256KB) significantly improve performance on network filesystems by reducing
-# the number of system calls and network round-trips. Applications should override
-# this when initializing FileProxyClient with buffer_size parameter.
-DEFAULT_BUFFER_SIZE = 8192
+# Default buffer size for file streaming (64 KB)
+# This provides good performance on network filesystems by reducing system calls
+# and network round-trips. Applications can override this when initializing
+# FileProxyClient with buffer_size parameter.
+DEFAULT_BUFFER_SIZE = 65536
 
 
 @dataclass
