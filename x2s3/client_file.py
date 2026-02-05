@@ -127,23 +127,17 @@ def file_iterator(handle: FileObjectHandle, buffer_size: int = DEFAULT_BUFFER_SI
     try:
         fh = handle.file_handle
         fh.seek(handle.start)
-        if handle.end is None:
-            # Use explicit buffered reading instead of 'yield from fh' to respect buffer_size parameter.
-            # See commit message for detailed performance rationale.
-            while True:
-                chunk = fh.read(buffer_size)
-                if not chunk:
-                    break
-                yield chunk
-        else:
-            remaining = handle.end - handle.start + 1
-            while remaining > 0:
-                chunk_size = min(buffer_size, remaining)
-                chunk = fh.read(chunk_size)
-                if not chunk:
-                    break
-                yield chunk
-                remaining -= len(chunk)
+        # For unbounded reads (handle.end is None), use sys.maxsize as a sentinel value that
+        # will never be reached - the EOF check (if not chunk) will always terminate first.
+        # sys,maxsize equates to 9.2EB. At 100 Gbps network speed, transferring 9.2 EB would take ~23 years.
+        remaining = sys.maxsize if handle.end is None else (handle.end - handle.start + 1)
+        while remaining > 0:
+            chunk_size = min(buffer_size, remaining)
+            chunk = fh.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+            remaining -= len(chunk)
         completed = True
         if is_large:
             logger.info(f"Large stream done: target={handle.target_name}, key={handle.key}, content_length={handle.content_length}")
