@@ -13,8 +13,11 @@ from x2s3.utils import *
 from x2s3.client import ProxyClient, ObjectHandle
 
 
-# Default buffer size for file streaming (8 KB)
-DEFAULT_BUFFER_SIZE = 8192
+# Default buffer size for file streaming (64 KB)
+# This provides good performance on network filesystems by reducing system calls
+# and network round-trips. Applications can override this when initializing
+# FileProxyClient with buffer_size parameter.
+DEFAULT_BUFFER_SIZE = 65536
 
 
 @dataclass
@@ -102,9 +105,19 @@ def file_iterator(handle: FileObjectHandle, buffer_size: int = DEFAULT_BUFFER_SI
 
     Args:
         handle: FileObjectHandle containing file handle and range info
-        buffer_size: Size of chunks to read at a time
+        buffer_size: Size of chunks to read at a time. Larger buffers (64KB-256KB)
+            significantly improve performance on network filesystems by reducing
+            the number of read operations and network round-trips.
 
     Note: The file handle is closed when iteration completes or on error.
+
+    Performance: Uses explicit buffered reads (fh.read(buffer_size)) instead of
+    Python's line-based file iterator. This provides:
+    - Predictable chunk sizes regardless of file content
+    - Respect for the buffer_size parameter
+    - Significant speedup on network filesystems by reducing read operations
+    Line-based iteration is inappropriate for binary streaming and can cause
+    memory issues with large files that lack newlines.
     """
     is_large = handle.content_length is not None and handle.content_length >= LARGE_TRANSFER_THRESHOLD
     if is_large:
@@ -113,17 +126,17 @@ def file_iterator(handle: FileObjectHandle, buffer_size: int = DEFAULT_BUFFER_SI
     try:
         fh = handle.file_handle
         fh.seek(handle.start)
-        if handle.end is None:
-            yield from fh
-        else:
-            remaining = handle.end - handle.start + 1
-            while remaining > 0:
-                chunk_size = min(buffer_size, remaining)
-                chunk = fh.read(chunk_size)
-                if not chunk:
-                    break
-                yield chunk
-                remaining -= len(chunk)
+        # handle.content_length contains the number of bytes to read:
+        # - For full file reads: content_length = file_size
+        # - For range requests: content_length = end - start + 1
+        remaining = handle.content_length
+        while remaining > 0:
+            chunk_size = min(buffer_size, remaining)
+            chunk = fh.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+            remaining -= len(chunk)
         completed = True
         if is_large:
             logger.info(f"Large stream done: target={handle.target_name}, key={handle.key}, content_length={handle.content_length}")
