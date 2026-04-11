@@ -338,6 +338,10 @@ def create_app(settings):
             if client is None:
                 raise HTTPException(status_code=500, detail="Client for target bucket not found")
 
+            if not target_path:
+                # HEAD on bucket root — equivalent to HeadBucket
+                return Response(status_code=200, media_type="application/xml")
+
             return await client.head_object(target_path)
         except Exception:
             logger.opt(exception=sys.exc_info()).info("Error requesting head")
