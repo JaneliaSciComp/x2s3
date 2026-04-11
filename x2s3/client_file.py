@@ -366,6 +366,14 @@ class FileProxyClient(ProxyClient):
         commons = set()
         contents = []
 
+        if max_keys == 0:
+            return {
+                'contents': contents,
+                'common_prefixes': commons,
+                'next_token': None,
+                'is_truncated': 'false'
+            }
+
         if os.path.isdir(path):
             started = continuation_token is None
             for root, dirs, filenames in os.walk(path):
