@@ -51,7 +51,7 @@ Repository = "https://github.com/JaneliaSciComp/x2s3"
 [tool.setuptools]
 packages = ["x2s3"] 
 
-[tool.pixi.project]
+[tool.pixi.workspace]
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "osx-64", "linux-64"]
 
