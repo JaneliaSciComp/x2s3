@@ -300,7 +300,7 @@ class AiobotoProxyClient(ProxyClient):
             params = {k: v for k, v in params.items() if v is not None}
 
             response = await self.client.list_objects_v2(**params)
-            next_token = remove_prefix(self.bucket_prefix, response.get("NextContinuationToken", ""))
+            next_token = remove_prefix(self.bucket_prefix, response.get("NextContinuationToken"))
             is_truncated = "true" if response.get("IsTruncated", False) else "false"
 
             contents = []
