@@ -55,7 +55,7 @@ def test_acl(app):
 
 def test_get_html_root(app):
     with TestClient(app) as client:
-        response = client.get("/")
+        response = client.get("/", headers={"Accept": "text/html"})
         assert response.status_code == 200
         assert response.headers['content-type'].startswith("text/html")
         for target in app.settings.targets:
@@ -67,7 +67,8 @@ def test_get_html_root(app):
 
 def test_get_html_listing(app):
     with TestClient(app) as client:
-        response = client.get("/janelia-data-examples/jrc_mus_lung_covid.n5/")
+        response = client.get("/janelia-data-examples/jrc_mus_lung_covid.n5/",
+                              headers={"Accept": "text/html"})
         assert response.status_code == 200
         assert response.headers['content-type'].startswith("text/html")
         assert '<html>' in response.text
