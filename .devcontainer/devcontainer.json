@@ -1,0 +1,37 @@
+{
+  "name": "x2s3 Development",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "redhat.vscode-yaml",
+        "tamasfe.even-better-toml"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "${workspaceFolder}/.pixi/envs/default/bin/python"
+      }
+    }
+  },
+  "appPort": ["0.0.0.0:8100:8100"],
+  "mounts": [
+    "source=/opt/certs,target=/opt/certs,type=bind,readonly",
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind",
+    "source=${localEnv:HOME}/.local/bin,target=/home/vscode/.local/bin,type=bind,readonly",
+    "source=${localEnv:HOME}/.local/share/claude,target=${localEnv:HOME}/.local/share/claude,type=bind,readonly"
+  ],
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "remoteEnv": {
+    "PATH": "/home/vscode/.local/bin:${containerEnv:PATH}"
+  },
+  "remoteUser": "vscode"
+}
