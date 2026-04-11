@@ -223,6 +223,12 @@ class AiobotoProxyClient(ProxyClient):
                 headers["Content-Length"] = res_headers["content-length"]
                 content_length = int(res_headers["content-length"])
 
+            if "last-modified" in res_headers:
+                headers["Last-Modified"] = res_headers["last-modified"]
+
+            if "etag" in res_headers:
+                headers["ETag"] = res_headers["etag"]
+
             return S3ObjectHandle(
                 target_name=self.target_name,
                 key=key,
