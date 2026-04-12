@@ -326,7 +326,7 @@ class AiobotoProxyClient(ProxyClient):
 
             kwargs = {
                 'Name': self.target_name,
-                'Prefix': prefix,
+                'Prefix': prefix or '',
                 'Delimiter': delimiter,
                 'MaxKeys': max_keys,
                 'EncodingType': encoding_type,
