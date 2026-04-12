@@ -16,6 +16,9 @@ config.yaml*
 htmlconv
 assets
 
+# Java / Maven
+tests/java/target/
+
 # AI assistants
 CLAUDE.md
 .claude

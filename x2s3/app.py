@@ -248,6 +248,19 @@ def create_app(settings):
         return """User-agent: *\nDisallow: /"""
 
 
+    def _prefers_html(request: Request) -> bool:
+        """Check if the client prefers HTML over XML based on the Accept header.
+        Returns True only if text/html appears before application/xml.
+        """
+        accept = request.headers.get("accept", "")
+        html_pos = accept.find("text/html")
+        xml_pos = accept.find("application/xml")
+        if html_pos == -1:
+            return False
+        if xml_pos == -1:
+            return True
+        return html_pos < xml_pos
+
     @app.get("/{path:path}")
     async def target_dispatcher(request: Request,
                                 path: str,
@@ -256,7 +269,7 @@ def create_app(settings):
                                 delimiter: Optional[str] = Query(None, alias="delimiter"),
                                 encoding_type: Optional[str] = Query(None, alias="encoding-type"),
                                 fetch_owner: Optional[bool] = Query(None, alias="fetch-owner"),
-                                max_keys: Optional[int] = Query(1000, alias="max-keys", ge=1, le=1000),
+                                max_keys: Optional[int] = Query(1000, alias="max-keys", ge=0),
                                 prefix: Optional[str] = Query(None, alias="prefix"),
                                 start_after: Optional[str] = Query(None, alias="start-after")):
 
@@ -266,7 +279,7 @@ def create_app(settings):
         if not target_name or (is_virtual and target_name=='www'):
             # Return target index
             bucket_list = { target: f"/{target}/" for target in app.settings.get_browseable_targets()}
-            if app.settings.ui:
+            if app.settings.ui and _prefers_html(request):
                 return templates.TemplateResponse("index.html", {"request": request, "links": bucket_list})
             else:
                 xml = get_bucket_list_xml(bucket_list)
@@ -295,13 +308,14 @@ def create_app(settings):
                 return await client.get_object(target_path, range_header)
 
         if not target_path or target_path.endswith("/"):
-            if app.settings.ui:
+            if app.settings.ui and _prefers_html(request):
                 return await browse_bucket(request, target_name, target_path,
                     continuation_token=continuation_token,
                     max_keys=100,
                     is_virtual=is_virtual)
             else:
-                return get_nosuchbucket_response(target_name)
+                return await client.list_objects_v2(continuation_token, delimiter, \
+                    encoding_type, fetch_owner, max_keys, prefix, start_after)
         else:
             range_header = request.headers.get("range")
             return await client.get_object(target_path, range_header)
@@ -323,6 +337,10 @@ def create_app(settings):
             client = get_client(target_name)
             if client is None:
                 raise HTTPException(status_code=500, detail="Client for target bucket not found")
+
+            if not target_path:
+                # HEAD on bucket root — equivalent to HeadBucket
+                return Response(status_code=200, media_type="application/xml")
 
             return await client.head_object(target_path)
         except Exception:

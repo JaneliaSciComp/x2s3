@@ -344,7 +344,7 @@ class FileProxyClient(ProxyClient):
 
             kwargs = {
                 'Name': self.target_name,
-                'Prefix': prefix,
+                'Prefix': prefix or '',
                 'Delimiter': delimiter,
                 'MaxKeys': max_keys,
                 'EncodingType': encoding_type,
@@ -365,6 +365,14 @@ class FileProxyClient(ProxyClient):
     def walk_path(self, path, continuation_token, delimiter, max_keys):
         commons = set()
         contents = []
+
+        if max_keys == 0:
+            return {
+                'contents': contents,
+                'common_prefixes': commons,
+                'next_token': None,
+                'is_truncated': 'false'
+            }
 
         if os.path.isdir(path):
             started = continuation_token is None

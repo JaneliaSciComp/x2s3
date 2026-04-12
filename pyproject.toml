@@ -64,6 +64,13 @@ dev-launch-remote = "uvicorn x2s3.app:app --host 0.0.0.0 --port 8000 --reload --
 test-install = "pip install -e ."
 test = { cmd = "python -m pytest --cov=x2s3 --cov-report html -W ignore::DeprecationWarning", depends-on = ["test-install"] }
 
+[tool.pixi.feature.test-java.dependencies]
+openjdk = ">=17"
+maven = ">=3.9"
+
+[tool.pixi.feature.test-java.tasks]
+test-java = "mvn test -f tests/java/pom.xml"
+
 [tool.pixi.feature.release.tasks]
 pypi-build = "python -m build"
 pypi-upload = "twine upload dist/*"
@@ -71,6 +78,7 @@ pypi-upload = "twine upload dist/*"
 [tool.pixi.environments]
 default = {features = [], solve-group = "default"}
 test = {features = ["test"], solve-group = "default"}
+test-java = {features = ["test-java"], solve-group = "default"}
 release = {features = ["release"], solve-group = "default"}
 
 [tool.pixi.dependencies]

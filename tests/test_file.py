@@ -38,7 +38,7 @@ def app(get_settings):
     
 def test_get_html_root(app):
     with TestClient(app) as client:
-        response = client.get("/")
+        response = client.get("/", headers={"Accept": "text/html"})
         assert response.status_code == 200
         assert response.headers['content-type'].startswith("text/html")
         for target in app.settings.targets:

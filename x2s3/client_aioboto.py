@@ -223,6 +223,12 @@ class AiobotoProxyClient(ProxyClient):
                 headers["Content-Length"] = res_headers["content-length"]
                 content_length = int(res_headers["content-length"])
 
+            if "last-modified" in res_headers:
+                headers["Last-Modified"] = res_headers["last-modified"]
+
+            if "etag" in res_headers:
+                headers["ETag"] = res_headers["etag"]
+
             return S3ObjectHandle(
                 target_name=self.target_name,
                 key=key,
@@ -300,14 +306,14 @@ class AiobotoProxyClient(ProxyClient):
             params = {k: v for k, v in params.items() if v is not None}
 
             response = await self.client.list_objects_v2(**params)
-            next_token = remove_prefix(self.bucket_prefix, response.get("NextContinuationToken", ""))
+            next_token = remove_prefix(self.bucket_prefix, response.get("NextContinuationToken"))
             is_truncated = "true" if response.get("IsTruncated", False) else "false"
 
             contents = []
             for obj in response.get("Contents", []):
                 contents.append({
                     'Key': remove_prefix(self.bucket_prefix, obj["Key"]),
-                    'LastModified': obj["LastModified"].isoformat(),
+                    'LastModified': obj["LastModified"].strftime("%Y-%m-%dT%H:%M:%S.000Z"),
                     'ETag': obj.get("ETag"),
                     'Size': obj.get("Size"),
                     'StorageClass': obj.get("StorageClass")
@@ -320,7 +326,7 @@ class AiobotoProxyClient(ProxyClient):
 
             kwargs = {
                 'Name': self.target_name,
-                'Prefix': prefix,
+                'Prefix': prefix or '',
                 'Delimiter': delimiter,
                 'MaxKeys': max_keys,
                 'EncodingType': encoding_type,
