@@ -22,7 +22,7 @@ import java.util.List;
 public class S3CompatTest {
 
     private static final String BUCKET = "janelia-data-examples";
-    private static final String DEFAULT_PROXY = "https://nextflow.int.janelia.org:8003";
+    private static final String DEFAULT_PROXY = "http://localhost:8000";
 
     private static S3Client awsClient;
     private static S3Client proxyClient;
