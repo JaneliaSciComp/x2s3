@@ -145,7 +145,7 @@ def format_timestamp_s3(timestamp):
     """ Format the given timestamp to ISO date format compatible with AWS S3.
     """
     dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-    return dt.isoformat()
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
 def format_isoformat_as_local(isodate):

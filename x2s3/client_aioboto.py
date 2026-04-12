@@ -313,7 +313,7 @@ class AiobotoProxyClient(ProxyClient):
             for obj in response.get("Contents", []):
                 contents.append({
                     'Key': remove_prefix(self.bucket_prefix, obj["Key"]),
-                    'LastModified': obj["LastModified"].isoformat(),
+                    'LastModified': obj["LastModified"].strftime("%Y-%m-%dT%H:%M:%S.000Z"),
                     'ETag': obj.get("ETag"),
                     'Size': obj.get("Size"),
                     'StorageClass': obj.get("StorageClass")
