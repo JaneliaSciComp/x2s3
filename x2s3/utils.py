@@ -59,8 +59,13 @@ def elem_to_str(elem):
 
 def parse_xml(xml):
     """ Parse the given XML string into an XML element.
+        Strips namespace prefixes so callers can use plain tag names.
     """
-    return ET.fromstring(xml)
+    root = ET.fromstring(xml)
+    for elem in root.iter():
+        if '}' in elem.tag:
+            elem.tag = elem.tag.split('}', 1)[1]
+    return root
 
 
 def url_encode(s):
@@ -69,9 +74,12 @@ def url_encode(s):
     return urllib.parse.quote(s, safe='/ ').replace(' ','+')
 
 
+S3_XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/"
+
+
 def get_bucket_list_xml(buckets):
-    
-    root = ET.Element("ListAllMyBucketsResult")
+
+    root = ET.Element("ListAllMyBucketsResult", xmlns=S3_XMLNS)
     buckets_elem = add_elem(root, "Buckets")
 
     for bucket in buckets:
@@ -89,7 +97,7 @@ def get_list_xml(contents, common_prefixes, url_encode=True, **kwargs):
     if url_encode and 'EncodingType' in kwargs:
         is_url_encode = kwargs['EncodingType']=='url'
 
-    root = ET.Element("ListBucketResult")
+    root = ET.Element("ListBucketResult", xmlns=S3_XMLNS)
 
     keys = [
         'Name', 
