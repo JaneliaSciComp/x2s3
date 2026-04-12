@@ -100,16 +100,16 @@ def get_list_xml(contents, common_prefixes, url_encode=True, **kwargs):
     root = ET.Element("ListBucketResult", xmlns=S3_XMLNS)
 
     keys = [
-        'Name', 
+        'Name',
         'Prefix',
-        'Delimiter',
-        'KeyCount',
-        'MaxKeys',
-        'EncodingType',
-        'IsTruncated',
+        'StartAfter',
         'ContinuationToken',
         'NextContinuationToken',
-        'StartAfter'
+        'KeyCount',
+        'MaxKeys',
+        'Delimiter',
+        'EncodingType',
+        'IsTruncated',
     ]
 
     for key in keys:
