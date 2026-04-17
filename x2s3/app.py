@@ -27,7 +27,7 @@ try:
     import asyncio
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     logger.info("uvloop event loop policy installed")
-except (ImportError, RuntimeError):
+except ImportError:
     logger.warning("uvloop not available, using default asyncio event loop")
 
 def create_app(settings):
