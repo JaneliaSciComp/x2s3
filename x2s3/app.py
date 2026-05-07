@@ -225,8 +225,7 @@ def create_app(settings):
         target_prefix = '' if is_virtual else '/'+target_name
         parent_prefix = dir_path(os.path.dirname(prefix.rstrip('/')))
 
-        return templates.TemplateResponse("browse.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "browse.html", context={
             "prefix": prefix,
             "index_url": app.settings.base_url or '/',
             "target_prefix": target_prefix,
@@ -280,7 +279,7 @@ def create_app(settings):
             # Return target index
             bucket_list = { target: f"/{target}/" for target in app.settings.get_browseable_targets()}
             if app.settings.ui and _prefers_html(request):
-                return templates.TemplateResponse("index.html", {"request": request, "links": bucket_list})
+                return templates.TemplateResponse(request, "index.html", context={"links": bucket_list})
             else:
                 xml = get_bucket_list_xml(bucket_list)
                 return Response(content=xml, status_code=200, media_type="application/xml")
