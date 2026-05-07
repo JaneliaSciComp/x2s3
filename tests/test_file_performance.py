@@ -90,10 +90,13 @@ def test_buffer_size_performance(file_size_mb):
         speedup_256kb = time_8kb / time_256kb if time_256kb > 0 else float('inf')
 
         # Print performance metrics for debugging
+        def mb_per_sec(b, t):
+            return b / t / (1024 * 1024) if t > 0 else float('inf')
+
         print(f"\n=== Performance Test Results ({file_size_mb}MB file) ===")
-        print(f"8KB buffer:   {time_8kb:.4f}s ({bytes_8kb / time_8kb / (1024*1024):.2f} MB/s)")
-        print(f"64KB buffer:  {time_64kb:.4f}s ({bytes_64kb / time_64kb / (1024*1024):.2f} MB/s) - {speedup_64kb:.2f}x faster")
-        print(f"256KB buffer: {time_256kb:.4f}s ({bytes_256kb / time_256kb / (1024*1024):.2f} MB/s) - {speedup_256kb:.2f}x faster")
+        print(f"8KB buffer:   {time_8kb:.4f}s ({mb_per_sec(bytes_8kb, time_8kb):.2f} MB/s)")
+        print(f"64KB buffer:  {time_64kb:.4f}s ({mb_per_sec(bytes_64kb, time_64kb):.2f} MB/s) - {speedup_64kb:.2f}x faster")
+        print(f"256KB buffer: {time_256kb:.4f}s ({mb_per_sec(bytes_256kb, time_256kb):.2f} MB/s) - {speedup_256kb:.2f}x faster")
 
         # Assert performance improvements
         # Note: Even on local disk, we expect at least 20% improvement with larger buffers
@@ -201,36 +204,34 @@ def test_range_request_buffering():
 
     try:
         # Read a range with small buffer
-        file_handle = open(test_file, 'rb')
-        handle_small = FileObjectHandle(
-            target_name="test",
-            key=str(test_file),
-            status_code=206,
-            headers={},
-            media_type="application/octet-stream",
-            content_length=1024*1024,  # 1MB range
-            file_handle=file_handle,
-            start=0,
-            end=1024*1024 - 1
-        )
-
-        time_small, bytes_small = stream_file_with_buffer(test_file, buffer_size=8192)
+        with open(test_file, 'rb') as file_handle:
+            handle_small = FileObjectHandle(
+                target_name="test",
+                key=str(test_file),
+                status_code=206,
+                headers={},
+                media_type="application/octet-stream",
+                content_length=1024*1024,  # 1MB range
+                file_handle=file_handle,
+                start=0,
+                end=1024*1024 - 1
+            )
+            time_small, bytes_small = stream_file_with_buffer(test_file, buffer_size=8192)
 
         # Read same range with large buffer
-        file_handle = open(test_file, 'rb')
-        handle_large = FileObjectHandle(
-            target_name="test",
-            key=str(test_file),
-            status_code=206,
-            headers={},
-            media_type="application/octet-stream",
-            content_length=1024*1024,
-            file_handle=file_handle,
-            start=0,
-            end=1024*1024 - 1
-        )
-
-        time_large, bytes_large = stream_file_with_buffer(test_file, buffer_size=256*1024)
+        with open(test_file, 'rb') as file_handle:
+            handle_large = FileObjectHandle(
+                target_name="test",
+                key=str(test_file),
+                status_code=206,
+                headers={},
+                media_type="application/octet-stream",
+                content_length=1024*1024,
+                file_handle=file_handle,
+                start=0,
+                end=1024*1024 - 1
+            )
+            time_large, bytes_large = stream_file_with_buffer(test_file, buffer_size=256*1024)
 
         # Both should read same amount
         assert bytes_small == bytes_large
