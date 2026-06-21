@@ -30,6 +30,38 @@ try:
 except ImportError:
     logger.warning("uvloop not available, using default asyncio event loop")
 
+class RequestIdMiddleware:
+    """Pure ASGI middleware that attaches an S3-style x-amz-request-id header
+    to every response.
+
+    Real S3 returns this header on all responses (GetObject, HeadObject,
+    ListObjectsV2, errors, etc.) so clients can reference a specific request
+    when correlating logs or reporting issues. We generate one id per request
+    and inject it into the response start event, which works for streaming
+    responses without buffering the body.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request_id = generate_request_id()
+        # Expose to downstream handlers/loggers via request.state.request_id
+        scope.setdefault("state", {})["request_id"] = request_id
+
+        async def send_with_request_id(message):
+            if message["type"] == "http.response.start":
+                headers = message.setdefault("headers", [])
+                headers.append((b"x-amz-request-id", request_id.encode("latin-1")))
+            await send(message)
+
+        await self.app(scope, receive, send_with_request_id)
+
+
 def create_app(settings):
 
     @asynccontextmanager
@@ -100,13 +132,14 @@ def create_app(settings):
         logger.info("All clients closed")
 
     app = FastAPI(lifespan=lifespan)
+    app.add_middleware(RequestIdMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
         allow_credentials=True,
         allow_methods=["GET","HEAD"],
         allow_headers=["*"],
-        expose_headers=["Range", "Content-Range"],
+        expose_headers=["Range", "Content-Range", "x-amz-request-id"],
     )
     app.mount("/static", StaticFiles(directory="static"), name="static")
     templates = Jinja2Templates(directory="templates")

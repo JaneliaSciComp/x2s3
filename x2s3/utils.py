@@ -1,4 +1,5 @@
 import inspect
+import secrets
 import urllib
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -75,6 +76,17 @@ def url_encode(s):
 
 
 S3_XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/"
+
+# Characters used by AWS S3 for the x-amz-request-id value (uppercase alphanumeric).
+_REQUEST_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+
+def generate_request_id(length=16):
+    """ Generate an S3-style request id: a short uppercase alphanumeric string.
+        Used as the value of the x-amz-request-id response header so clients can
+        reference a specific request when correlating logs or reporting issues.
+    """
+    return ''.join(secrets.choice(_REQUEST_ID_ALPHABET) for _ in range(length))
 
 
 def get_bucket_list_xml(buckets):
