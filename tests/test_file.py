@@ -115,3 +115,29 @@ def test_get_object_missing(app):
         assert response.headers['content-type'] == "application/xml"
         root = parse_xml(response.text)
         assert root.find('Code').text == 'NoSuchKey'
+
+
+def _assert_valid_request_id(response):
+    request_id = response.headers.get('x-amz-request-id')
+    assert request_id, "missing x-amz-request-id header"
+    assert len(request_id) == 16
+    assert request_id.isalnum() and request_id.upper() == request_id
+
+
+def test_request_id_header_present(app):
+    """Every response should carry an S3-style x-amz-request-id header."""
+    with TestClient(app) as client:
+        _assert_valid_request_id(client.get("/", headers={"Accept": "text/html"}))
+        _assert_valid_request_id(client.get("/local-files?list-type=2&prefix=tests/"))
+        _assert_valid_request_id(client.head("/local-files/README.md"))
+        _assert_valid_request_id(client.get("/local-files/README.md"))
+        # Also present on error responses
+        _assert_valid_request_id(client.get("/local-files/missing"))
+
+
+def test_request_id_header_unique(app):
+    """Each request should get a distinct x-amz-request-id."""
+    with TestClient(app) as client:
+        first = client.get("/local-files/README.md").headers['x-amz-request-id']
+        second = client.get("/local-files/README.md").headers['x-amz-request-id']
+        assert first != second
