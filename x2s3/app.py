@@ -394,9 +394,9 @@ def create_app(settings):
 
         if list_type:
             if not target_path:
+                if not target_config.browseable:
+                    return get_accessdenied_response()
                 if list_type == 2:
-                    if not target_config.browseable:
-                        return get_accessdenied_response()
                     return await client.list_objects_v2(continuation_token, delimiter, \
                         encoding_type, fetch_owner, max_keys, prefix, start_after)
                 else:

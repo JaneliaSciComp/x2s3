@@ -304,3 +304,13 @@ def test_list_objects_hidden_denied(app):
         assert response.status_code == 403
         root = parse_xml(response.text)
         assert root.find('Code').text == 'AccessDenied'
+
+
+def test_hidden_missing_key_masked(app):
+    with TestClient(app) as client:
+        response = client.get("/hidden-with-endpoint/missing")
+        assert response.status_code == 403
+        root = parse_xml(response.text)
+        assert root.find('Code').text == 'AccessDenied'
+        response = client.head("/hidden-with-endpoint/missing")
+        assert response.status_code == 403

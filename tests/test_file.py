@@ -156,6 +156,18 @@ def test_unbrowseable_list_denied(app):
         assert response.headers['content-type'] == "application/xml"
         root = parse_xml(response.text)
         assert root.find('Code').text == 'AccessDenied'
+        # Deny takes precedence over list-type validation
+        response = client.get("/hidden-files?list-type=1")
+        assert response.status_code == 403
+
+
+def test_unbrowseable_hidden_from_xml_root(app):
+    with TestClient(app) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.headers['content-type'].startswith("application/xml")
+        assert 'local-files' in response.text
+        assert 'hidden-files' not in response.text
 
 
 def test_unbrowseable_browse_denied(app):
