@@ -23,9 +23,15 @@ def get_settings():
             name='local-files-with-etags',
             client='file',
             options={
-                'path':'.', 
+                'path':'.',
                 'calculate_etags':'true'
             }
+        ),
+        Target(
+            name='hidden-files',
+            browseable=False,
+            client='file',
+            options={'path':'.'}
         )
     ]
     return settings
@@ -141,3 +147,89 @@ def test_request_id_header_unique(app):
         first = client.get("/local-files/README.md").headers['x-amz-request-id']
         second = client.get("/local-files/README.md").headers['x-amz-request-id']
         assert first != second
+
+
+def test_unbrowseable_list_denied(app):
+    with TestClient(app) as client:
+        response = client.get("/hidden-files?list-type=2")
+        assert response.status_code == 403
+        assert response.headers['content-type'] == "application/xml"
+        root = parse_xml(response.text)
+        assert root.find('Code').text == 'AccessDenied'
+        # Deny takes precedence over list-type validation
+        response = client.get("/hidden-files?list-type=1")
+        assert response.status_code == 403
+
+
+def test_unbrowseable_hidden_from_xml_root(app):
+    with TestClient(app) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.headers['content-type'].startswith("application/xml")
+        assert 'local-files' in response.text
+        assert 'hidden-files' not in response.text
+
+
+def test_unbrowseable_browse_denied(app):
+    with TestClient(app) as client:
+        # HTML browse UI on bucket root and on a subdirectory
+        response = client.get("/hidden-files/", headers={"Accept": "text/html"})
+        assert response.status_code == 403
+        response = client.get("/hidden-files/tests/", headers={"Accept": "text/html"})
+        assert response.status_code == 403
+        # Trailing-slash XML listing (no HTML preference)
+        response = client.get("/hidden-files/tests/")
+        assert response.status_code == 403
+        root = parse_xml(response.text)
+        assert root.find('Code').text == 'AccessDenied'
+
+
+def test_unbrowseable_acl_denied(app):
+    with TestClient(app) as client:
+        # GetBucketAcl
+        response = client.get("/hidden-files?acl")
+        assert response.status_code == 403
+        # GetObjectAcl
+        response = client.get("/hidden-files/README.md?acl")
+        assert response.status_code == 403
+
+
+def test_unbrowseable_get_object_allowed(app):
+    with TestClient(app) as client:
+        response = client.get("/hidden-files/README.md")
+        assert response.status_code == 200
+        assert 'x2s3' in response.text
+        # GetObject takes precedence over list-type when a key is present
+        response = client.get("/hidden-files/README.md?list-type=2")
+        assert response.status_code == 200
+
+
+def test_unbrowseable_get_missing_masked(app):
+    with TestClient(app) as client:
+        # Missing key returns 403 (not 404) so key existence can't be probed,
+        # matching real S3 behavior when s3:ListBucket is denied
+        response = client.get("/hidden-files/missing")
+        assert response.status_code == 403
+        root = parse_xml(response.text)
+        assert root.find('Code').text == 'AccessDenied'
+        # Same masking on the list-type+key (GetObject precedence) path
+        response = client.get("/hidden-files/missing?list-type=2")
+        assert response.status_code == 403
+
+
+def test_unbrowseable_head(app):
+    with TestClient(app) as client:
+        # Existing key: works
+        response = client.head("/hidden-files/README.md")
+        assert response.status_code == 200
+        # Missing key: masked as 403
+        response = client.head("/hidden-files/missing")
+        assert response.status_code == 403
+        # HeadBucket: real S3 requires s3:ListBucket, so deny
+        response = client.head("/hidden-files")
+        assert response.status_code == 403
+        # Browseable bucket unaffected
+        response = client.head("/local-files")
+        assert response.status_code == 200
+        response = client.head("/local-files/missing")
+        assert response.status_code == 404

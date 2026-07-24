@@ -378,20 +378,35 @@ def create_app(settings):
             raise HTTPException(status_code=500, detail="Client for target bucket not found")
 
         if 'acl' in request.query_params:
+            if not target_config.browseable:
+                # Real S3 denies GetBucketAcl/GetObjectAcl without s3:GetBucketAcl/s3:GetObjectAcl
+                return get_accessdenied_response()
             return get_read_access_acl()
+
+        async def get_object_or_denied(key):
+            """GetObject with S3-style 404 masking: on unbrowseable buckets a
+            missing key returns 403 AccessDenied so clients can't probe which
+            keys exist (real S3 does this when s3:ListBucket is denied)."""
+            response = await client.get_object(key, request.headers.get("range"))
+            if response.status_code == 404 and not target_config.browseable:
+                return get_accessdenied_response()
+            return response
 
         if list_type:
             if not target_path:
+                if not target_config.browseable:
+                    return get_accessdenied_response()
                 if list_type == 2:
                     return await client.list_objects_v2(continuation_token, delimiter, \
                         encoding_type, fetch_owner, max_keys, prefix, start_after)
                 else:
                     raise HTTPException(status_code=400, detail="Invalid list type")
             else:
-                range_header = request.headers.get("range")
-                return await client.get_object(target_path, range_header)
+                return await get_object_or_denied(target_path)
 
         if not target_path or target_path.endswith("/"):
+            if not target_config.browseable:
+                return get_accessdenied_response()
             if app.settings.ui and _prefers_html(request):
                 return await browse_bucket(request, target_name, target_path,
                     continuation_token=continuation_token,
@@ -401,8 +416,7 @@ def create_app(settings):
                 return await client.list_objects_v2(continuation_token, delimiter, \
                     encoding_type, fetch_owner, max_keys, prefix, start_after)
         else:
-            range_header = request.headers.get("range")
-            return await client.get_object(target_path, range_header)
+            return await get_object_or_denied(target_path)
 
 
 
@@ -423,10 +437,17 @@ def create_app(settings):
                 raise HTTPException(status_code=500, detail="Client for target bucket not found")
 
             if not target_path:
-                # HEAD on bucket root — equivalent to HeadBucket
+                # HEAD on bucket root — equivalent to HeadBucket, which
+                # requires s3:ListBucket in real S3
+                if not target_config.browseable:
+                    return Response(status_code=403, media_type="application/xml")
                 return Response(status_code=200, media_type="application/xml")
 
-            return await client.head_object(target_path)
+            response = await client.head_object(target_path)
+            if response.status_code == 404 and not target_config.browseable:
+                # Mask missing keys on unbrowseable buckets; HEAD carries no body
+                return Response(status_code=403, media_type="application/xml")
+            return response
         except Exception:
             logger.opt(exception=sys.exc_info()).info("Error requesting head")
             return get_error_response(500, "InternalError", "Error requesting HEAD", path)

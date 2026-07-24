@@ -27,7 +27,7 @@ client_options:
 Each target may have the following properties:
 
 * `name`: Name of the bucket
-* `browseable`: Can this bucket be listed and browsed interactively?
+* `browseable`: If `false`, the bucket becomes key-only: it is hidden from the main listing, all list/browse/ACL requests return `403 AccessDenied`, and objects can only be retrieved by exact key.
 * `options`: Dictionary of client-specific options (see below)
 * `client`: The client to use to access the storage location target. Supported clients:
     * *aioboto*: S3-compatible targets. Options:
@@ -113,6 +113,6 @@ targets:
 
 ## Notes
 
-For each bucket, you can either provide credentials, or it will fallback on anonymous access. Credentials are read from files on disk. You can specify a `prefix` to constrain browsing of a bucket to a given subpath. Set `browseable: false` to hide the bucket from the main listing -- you may also want to obfuscate the bucket name.
+For each bucket, you can either provide credentials, or it will fallback on anonymous access. Credentials are read from files on disk. You can specify a `prefix` to constrain browsing of a bucket to a given subpath. Set `browseable: false` to make a bucket key-only: it is hidden from the main listing, all listing and browsing requests return `403 AccessDenied`, and `GET`/`HEAD` of a missing key returns `403` instead of `404` so that key existence cannot be probed. Objects are accessible only to clients that know the exact key. This mirrors AWS S3 behavior for a bucket policy that grants `s3:GetObject` but denies `s3:ListBucket`.
 
 The `base_url` is how your server will be addressed externally. If you are using https then you will need to provide the `ssl-keyfile` and `ssl-certfile` when running Uvicorn (or equivalently `KEY_FILE` and `CERT_FILE` when running in Docker.)
