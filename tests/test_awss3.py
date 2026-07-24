@@ -296,3 +296,11 @@ def test_get_object_precedence(app):
         assert response.status_code == 200
         json_obj = response.json()
         assert 'n5' in json_obj
+
+
+def test_list_objects_hidden_denied(app):
+    with TestClient(app) as client:
+        response = client.get("/hidden-with-endpoint?list-type=2")
+        assert response.status_code == 403
+        root = parse_xml(response.text)
+        assert root.find('Code').text == 'AccessDenied'

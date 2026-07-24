@@ -55,7 +55,9 @@ targets:
 
   #
   # Exposes s3://janelia-cosem-datasets at /cosem-data-hidden
-  # using the default client (currently aioboto) and makes it unbrowseable
+  # using the default client (currently aioboto) and makes it key-only:
+  # hidden from the main listing, listing/browsing denied with 403,
+  # objects retrievable only by exact key
   #
   - name: cosem-data-hidden
     browseable: false
