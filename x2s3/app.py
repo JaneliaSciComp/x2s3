@@ -378,11 +378,16 @@ def create_app(settings):
             raise HTTPException(status_code=500, detail="Client for target bucket not found")
 
         if 'acl' in request.query_params:
+            if not target_config.browseable:
+                # Real S3 denies GetBucketAcl/GetObjectAcl without s3:GetBucketAcl/s3:GetObjectAcl
+                return get_accessdenied_response()
             return get_read_access_acl()
 
         if list_type:
             if not target_path:
                 if list_type == 2:
+                    if not target_config.browseable:
+                        return get_accessdenied_response()
                     return await client.list_objects_v2(continuation_token, delimiter, \
                         encoding_type, fetch_owner, max_keys, prefix, start_after)
                 else:
@@ -392,6 +397,8 @@ def create_app(settings):
                 return await client.get_object(target_path, range_header)
 
         if not target_path or target_path.endswith("/"):
+            if not target_config.browseable:
+                return get_accessdenied_response()
             if app.settings.ui and _prefers_html(request):
                 return await browse_bucket(request, target_name, target_path,
                     continuation_token=continuation_token,

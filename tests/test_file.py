@@ -23,9 +23,15 @@ def get_settings():
             name='local-files-with-etags',
             client='file',
             options={
-                'path':'.', 
+                'path':'.',
                 'calculate_etags':'true'
             }
+        ),
+        Target(
+            name='hidden-files',
+            browseable=False,
+            client='file',
+            options={'path':'.'}
         )
     ]
     return settings
@@ -141,3 +147,46 @@ def test_request_id_header_unique(app):
         first = client.get("/local-files/README.md").headers['x-amz-request-id']
         second = client.get("/local-files/README.md").headers['x-amz-request-id']
         assert first != second
+
+
+def test_unbrowseable_list_denied(app):
+    with TestClient(app) as client:
+        response = client.get("/hidden-files?list-type=2")
+        assert response.status_code == 403
+        assert response.headers['content-type'] == "application/xml"
+        root = parse_xml(response.text)
+        assert root.find('Code').text == 'AccessDenied'
+
+
+def test_unbrowseable_browse_denied(app):
+    with TestClient(app) as client:
+        # HTML browse UI on bucket root and on a subdirectory
+        response = client.get("/hidden-files/", headers={"Accept": "text/html"})
+        assert response.status_code == 403
+        response = client.get("/hidden-files/tests/", headers={"Accept": "text/html"})
+        assert response.status_code == 403
+        # Trailing-slash XML listing (no HTML preference)
+        response = client.get("/hidden-files/tests/")
+        assert response.status_code == 403
+        root = parse_xml(response.text)
+        assert root.find('Code').text == 'AccessDenied'
+
+
+def test_unbrowseable_acl_denied(app):
+    with TestClient(app) as client:
+        # GetBucketAcl
+        response = client.get("/hidden-files?acl")
+        assert response.status_code == 403
+        # GetObjectAcl
+        response = client.get("/hidden-files/README.md?acl")
+        assert response.status_code == 403
+
+
+def test_unbrowseable_get_object_allowed(app):
+    with TestClient(app) as client:
+        response = client.get("/hidden-files/README.md")
+        assert response.status_code == 200
+        assert 'x2s3' in response.text
+        # GetObject takes precedence over list-type when a key is present
+        response = client.get("/hidden-files/README.md?list-type=2")
+        assert response.status_code == 200
