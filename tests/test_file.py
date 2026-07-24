@@ -190,3 +190,34 @@ def test_unbrowseable_get_object_allowed(app):
         # GetObject takes precedence over list-type when a key is present
         response = client.get("/hidden-files/README.md?list-type=2")
         assert response.status_code == 200
+
+
+def test_unbrowseable_get_missing_masked(app):
+    with TestClient(app) as client:
+        # Missing key returns 403 (not 404) so key existence can't be probed,
+        # matching real S3 behavior when s3:ListBucket is denied
+        response = client.get("/hidden-files/missing")
+        assert response.status_code == 403
+        root = parse_xml(response.text)
+        assert root.find('Code').text == 'AccessDenied'
+        # Same masking on the list-type+key (GetObject precedence) path
+        response = client.get("/hidden-files/missing?list-type=2")
+        assert response.status_code == 403
+
+
+def test_unbrowseable_head(app):
+    with TestClient(app) as client:
+        # Existing key: works
+        response = client.head("/hidden-files/README.md")
+        assert response.status_code == 200
+        # Missing key: masked as 403
+        response = client.head("/hidden-files/missing")
+        assert response.status_code == 403
+        # HeadBucket: real S3 requires s3:ListBucket, so deny
+        response = client.head("/hidden-files")
+        assert response.status_code == 403
+        # Browseable bucket unaffected
+        response = client.head("/local-files")
+        assert response.status_code == 200
+        response = client.head("/local-files/missing")
+        assert response.status_code == 404
