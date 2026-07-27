@@ -37,6 +37,7 @@ Each target may have the following properties:
         * `access_key_path`: Path to the S3 access key (for private buckets)
         * `secret_key_path`: Path to the S3 secret key (for private buckets)
         * `config`: Botocore configuration options (see below)
+        * `proxy_etag`: If true, the backend's `ETag` is proxied through to clients (default: false). Most S3-compatible backends (e.g. VAST) return an `ETag` that is not a true content MD5, which causes the AWS CLI/SDK download integrity check to fail with "Unable to verify integrity of data download". Only set this to true for backends known to return a real content-MD5 `ETag` (e.g. real AWS S3).
     * *file*: Local filesystem targets. Options:
         * `path`: Path to the root
         * `buffer_size`: Size of chunks (in bytes) when streaming file content (default: 8192)

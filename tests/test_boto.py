@@ -19,6 +19,10 @@ def get_settings():
         Target(
             name='janelia-data-examples',
             options={'bucket':'janelia-data-examples'}
+        ),
+        Target(
+            name='janelia-data-examples-with-etag',
+            options={'bucket':'janelia-data-examples', 'proxy_etag': True}
         )
     ]
     return settings
@@ -108,6 +112,15 @@ def test_head_object(app, s3_client):
 def test_get_object(app, s3_client):
     response = s3_client.get_object(Bucket='janelia-data-examples', Key='jrc_mus_lung_covid.n5/attributes.json')
     assert response['ResponseMetadata']['HTTPStatusCode'] == 200
+    assert 'ETag' not in response
+    json_obj = response['Body'].read().decode('utf-8')
+    assert 'n5' in json_obj
+
+
+def test_get_object_with_etag(app, s3_client):
+    response = s3_client.get_object(Bucket='janelia-data-examples-with-etag', Key='jrc_mus_lung_covid.n5/attributes.json')
+    assert response['ResponseMetadata']['HTTPStatusCode'] == 200
+    assert 'ETag' in response
     json_obj = response['Body'].read().decode('utf-8')
     assert 'n5' in json_obj
 
