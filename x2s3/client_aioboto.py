@@ -73,6 +73,11 @@ class AiobotoProxyClient(ProxyClient):
         self.bucket_name = kwargs['bucket']
         self.bucket_prefix = kwargs.get('prefix')
 
+        # Some S3-compatible backends (e.g. VAST) return ETags that are not a
+        # true content MD5, which breaks the AWS CLI/SDK download integrity
+        # check. Allow disabling ETag proxying per-target for those backends.
+        self.proxy_etag = kwargs.get('proxy_etag', False)
+
         self.anonymous = True
         access_key,secret_key = '',''
 
@@ -162,11 +167,13 @@ class AiobotoProxyClient(ProxyClient):
         try:
             s3_res = await self.client.head_object(Bucket=self.bucket_name, Key=real_key)
             headers = {
-                "ETag": s3_res.get("ETag"),
                 "Accept-Ranges": "bytes",
                 "Content-Length": str(s3_res.get("ContentLength")),
                 "Last-Modified": s3_res.get("LastModified").strftime("%a, %d %b %Y %H:%M:%S GMT"),
             }
+
+            if self.proxy_etag:
+                headers["ETag"] = s3_res.get("ETag")
 
             content_type = guess_content_type(real_key)
             headers['Content-Type'] = content_type
@@ -226,7 +233,7 @@ class AiobotoProxyClient(ProxyClient):
             if "last-modified" in res_headers:
                 headers["Last-Modified"] = res_headers["last-modified"]
 
-            if "etag" in res_headers:
+            if self.proxy_etag and "etag" in res_headers:
                 headers["ETag"] = res_headers["etag"]
 
             return S3ObjectHandle(
@@ -314,7 +321,7 @@ class AiobotoProxyClient(ProxyClient):
                 contents.append({
                     'Key': remove_prefix(self.bucket_prefix, obj["Key"]),
                     'LastModified': obj["LastModified"].strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                    'ETag': obj.get("ETag"),
+                    'ETag': obj.get("ETag") if self.proxy_etag else None,
                     'Size': obj.get("Size"),
                     'StorageClass': obj.get("StorageClass")
                 })

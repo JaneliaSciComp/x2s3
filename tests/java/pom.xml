@@ -13,6 +13,8 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <aws.sdk.version>2.25.60</aws.sdk.version>
+        <!-- v1 SDK is what org.janelia.saalfeldlab.n5.s3 (and the Fiji error trace) actually uses -->
+        <aws.sdk.v1.version>1.12.780</aws.sdk.v1.version>
     </properties>
 
     <dependencies>
@@ -20,6 +22,16 @@
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>s3</artifactId>
             <version>${aws.sdk.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-java-sdk-s3</artifactId>
+            <version>${aws.sdk.v1.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.11.0</version>
         </dependency>
         <dependency>
             <groupId>junit</groupId>

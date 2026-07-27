@@ -73,7 +73,9 @@ public class S3CompatTest {
         for (int i = 0; i < awsObjects.size(); i++) {
             assertEquals("Key[" + i + "]", awsObjects.get(i).key(), proxyObjects.get(i).key());
             assertEquals("Size[" + i + "]", awsObjects.get(i).size(), proxyObjects.get(i).size());
-            assertEquals("ETag[" + i + "]", awsObjects.get(i).eTag(), proxyObjects.get(i).eTag());
+            // ETag is not proxied by default (proxy_etag defaults to false), since many
+            // S3-compatible backends return an ETag that isn't a real content MD5.
+            assertNull("ETag[" + i + "] should not be proxied by default", proxyObjects.get(i).eTag());
             assertEquals("StorageClass[" + i + "]",
                     awsObjects.get(i).storageClassAsString(),
                     proxyObjects.get(i).storageClassAsString());
@@ -212,9 +214,9 @@ public class S3CompatTest {
         assertEquals("Content-Length",
                 awsResp.response().contentLength(),
                 proxyResp.response().contentLength());
-        assertEquals("ETag",
-                awsResp.response().eTag(),
-                proxyResp.response().eTag());
+        // ETag is not proxied by default (proxy_etag defaults to false), since many
+        // S3-compatible backends return an ETag that isn't a real content MD5.
+        assertNull("ETag should not be proxied by default", proxyResp.response().eTag());
 
         // Compare body content
         try {
@@ -287,8 +289,9 @@ public class S3CompatTest {
                 awsResp.contentType(), proxyResp.contentType());
         assertEquals("Content-Length",
                 awsResp.contentLength(), proxyResp.contentLength());
-        assertEquals("ETag",
-                awsResp.eTag(), proxyResp.eTag());
+        // ETag is not proxied by default (proxy_etag defaults to false), since many
+        // S3-compatible backends return an ETag that isn't a real content MD5.
+        assertNull("ETag should not be proxied by default", proxyResp.eTag());
         assertEquals("Last-Modified",
                 awsResp.lastModified(), proxyResp.lastModified());
     }
