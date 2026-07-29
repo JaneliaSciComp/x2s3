@@ -106,6 +106,20 @@ def test_head_object(app):
         assert response.status_code == 404
 
 
+def test_head_root_index(app):
+    # The root index exists for GET, so HEAD must not report NoSuchBucket
+    with TestClient(app) as client:
+        for accept in ["text/html", "application/xml"]:
+            head_response = client.head("/", headers={"Accept": accept})
+            assert head_response.status_code == 200
+            assert head_response.headers['content-type'].startswith(accept)
+            assert head_response.headers['vary'] == "Accept"
+            # RFC 9110: HEAD sends the header fields GET would have sent
+            get_response = client.get("/", headers={"Accept": accept})
+            assert get_response.status_code == head_response.status_code
+            assert get_response.headers['content-type'] == head_response.headers['content-type']
+
+
 def test_get_object(app):
     with TestClient(app) as client:
         response = client.get("/local-files/README.md")

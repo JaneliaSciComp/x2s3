@@ -420,12 +420,21 @@ def create_app(settings):
 
 
 
-    @app.head("{path:path}")
+    @app.head("/{path:path}")
     async def head_object(request: Request, path: str):
 
-        target_name, target_path, _ = get_target(request, path)
-        if not target_name:
-            return get_nosuchbucket_response('')
+        target_name, target_path, is_virtual = get_target(request, path)
+
+        if not target_name or (is_virtual and target_name=='www'):
+            # target_dispatcher serves the proxy index for GET here, so HEAD
+            # must report the same status and headers, just without the body
+            media_type = "text/html" if app.settings.ui and _prefers_html(request) \
+                else "application/xml"
+            response = Response(status_code=200, media_type=media_type)
+            # Same URL serves HTML or XML depending on Accept, so shared
+            # caches must store the two variants separately
+            response.headers["Vary"] = "Accept"
+            return response
 
         try:
             target_config = app.settings.get_target_config(target_name)
