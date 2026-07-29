@@ -364,10 +364,14 @@ def create_app(settings):
             # Return target index
             bucket_list = { target: f"/{target}/" for target in app.settings.get_browseable_targets()}
             if app.settings.ui and _prefers_html(request):
-                return templates.TemplateResponse(request, "index.html", context={"links": bucket_list})
+                response = templates.TemplateResponse(request, "index.html", context={"links": bucket_list})
             else:
                 xml = get_bucket_list_xml(bucket_list)
-                return Response(content=xml, status_code=200, media_type="application/xml")
+                response = Response(content=xml, status_code=200, media_type="application/xml")
+            # Same URL serves HTML or XML depending on Accept, so shared
+            # caches must store the two variants separately
+            response.headers["Vary"] = "Accept"
+            return response
         
         target_config = app.settings.get_target_config(target_name)
         if not target_config:
@@ -408,13 +412,15 @@ def create_app(settings):
             if not target_config.browseable:
                 return get_accessdenied_response()
             if app.settings.ui and _prefers_html(request):
-                return await browse_bucket(request, target_name, target_path,
+                response = await browse_bucket(request, target_name, target_path,
                     continuation_token=continuation_token,
                     max_keys=100,
                     is_virtual=is_virtual)
             else:
-                return await client.list_objects_v2(continuation_token, delimiter, \
+                response = await client.list_objects_v2(continuation_token, delimiter, \
                     encoding_type, fetch_owner, max_keys, prefix, start_after)
+            response.headers["Vary"] = "Accept"
+            return response
         else:
             return await get_object_or_denied(target_path)
 
