@@ -456,7 +456,12 @@ def create_app(settings):
                 # requires s3:ListBucket in real S3
                 if not target_config.browseable:
                     return Response(status_code=403, media_type="application/xml")
-                return Response(status_code=200, media_type="application/xml")
+                # GET serves the browse UI or an XML listing here depending
+                # on Accept, so HEAD must report the matching content type
+                media_type = "text/html" if app.settings.ui and _prefers_html(request) \
+                    else "application/xml"
+                return Response(status_code=200, media_type=media_type,
+                    headers={"Vary": "Accept"})
 
             response = await client.head_object(target_path)
             if response.status_code == 404 and not target_config.browseable:
