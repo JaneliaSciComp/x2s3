@@ -54,6 +54,17 @@ def test_get_html_root(app):
                 assert target.name not in response.text
 
 
+def test_vary_accept_header(app):
+    # HTML vs XML is negotiated on Accept, so caches must key on it
+    with TestClient(app) as client:
+        for path in ["/", "/local-files/"]:
+            for accept in ["text/html", "application/xml"]:
+                response = client.get(path, headers={"Accept": accept})
+                assert response.status_code == 200
+                assert response.headers['vary'] == "Accept"
+                assert response.headers['content-type'].startswith(accept)
+
+
 def test_list_objects(app):
     with TestClient(app) as client:
         bucket_name = 'local-files'
