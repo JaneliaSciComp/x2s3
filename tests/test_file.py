@@ -131,6 +131,19 @@ def test_head_root_index(app):
             assert get_response.headers['content-type'] == head_response.headers['content-type']
 
 
+def test_head_bucket_root_index(app):
+    # GET /{bucket}/ negotiates browse HTML vs XML listing; HEAD must match
+    with TestClient(app) as client:
+        for accept in ["text/html", "application/xml"]:
+            head_response = client.head("/local-files/", headers={"Accept": accept})
+            assert head_response.status_code == 200
+            assert head_response.headers['content-type'].startswith(accept)
+            assert head_response.headers['vary'] == "Accept"
+            get_response = client.get("/local-files/", headers={"Accept": accept})
+            assert get_response.status_code == head_response.status_code
+            assert get_response.headers['content-type'] == head_response.headers['content-type']
+
+
 def test_get_object(app):
     with TestClient(app) as client:
         response = client.get("/local-files/README.md")
