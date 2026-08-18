@@ -400,3 +400,54 @@ def test_304_not_returned_for_missing_key(app):
         response = client.get("/local-files/does-not-exist.txt",
                               headers={"If-None-Match": "*"})
         assert response.status_code == 404
+
+
+def test_416_response_is_not_cacheable(app):
+    # An explicitly cacheable 416 could be replayed by a shared cache for a
+    # later plain GET (caches key on URI+method, not Range), making the
+    # object look permanently broken.
+    with TestClient(app) as client:
+        response = client.get("/local-files/README.md",
+                              headers={"Range": "bytes=99999999-100000000"})
+        assert response.status_code == 416
+        assert 'cache-control' not in response.headers
+        assert 'etag' not in response.headers
+
+
+def test_if_range_matching_etag_returns_ranged_body(app):
+    with TestClient(app) as client:
+        full = client.get("/local-files/README.md")
+        response = client.get("/local-files/README.md",
+                              headers={"Range": "bytes=0-9",
+                                       "If-Range": full.headers['etag']})
+        assert response.status_code == 206
+        assert response.content == full.content[:10]
+
+
+def test_if_range_stale_etag_returns_full_body(app):
+    with TestClient(app) as client:
+        full = client.get("/local-files/README.md")
+        response = client.get("/local-files/README.md",
+                              headers={"Range": "bytes=0-9",
+                                       "If-Range": '"stale-etag"'})
+        assert response.status_code == 200
+        assert response.content == full.content
+
+
+def test_if_range_without_range_is_ignored(app):
+    with TestClient(app) as client:
+        full = client.get("/local-files/README.md")
+        response = client.get("/local-files/README.md",
+                              headers={"If-Range": '"stale-etag"'})
+        assert response.status_code == 200
+        assert response.content == full.content
+
+
+def test_if_range_matching_last_modified_returns_ranged_body(app):
+    with TestClient(app) as client:
+        full = client.get("/local-files/README.md")
+        response = client.get("/local-files/README.md",
+                              headers={"Range": "bytes=0-9",
+                                       "If-Range": full.headers['last-modified']})
+        assert response.status_code == 206
+        assert response.content == full.content[:10]

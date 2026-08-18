@@ -270,6 +270,16 @@ def make_file_etag(mtime: float, size: int) -> str:
     ponytail: mtime granularity is the ceiling — two writes within the
     filesystem's mtime resolution that also keep the same size would share an
     ETag. Switch to a content hash if that ever matters.
+
+    The "-" separator is load-bearing, not cosmetic: the AWS Java SDK v1
+    skips its MD5 integrity check whenever `eTag.contains("-")`, on the
+    assumption that a hyphen means a multipart-upload ETag (which isn't an
+    MD5 of the body). That skip is the only reason handing out an ETag here
+    doesn't reintroduce the "Unable to verify integrity of data download"
+    failure that tests/java/.../S3v1IntegrityTest.java exists to reproduce,
+    and that `proxy_etag=False` defaults exist to avoid. Changing the
+    separator to `_` or `:` would make the SDK run the MD5 check again and
+    fail it, breaking Fiji/N5 Viewer.
     """
     return f'"{mtime:.6f}-{size}"'
 
@@ -295,6 +305,27 @@ def _etag_matches(if_none_match: str, etag: str) -> bool:
             candidate = candidate[2:]
         if candidate == etag:
             return True
+    return False
+
+
+def if_range_matches(if_range: str, response_headers) -> bool:
+    """True if an If-Range validator exactly matches ETag or Last-Modified.
+
+    response_headers may be a plain dict with canonical capitalization (see
+    check_not_modified above), so lookups here are lowercased explicitly.
+
+    Unlike If-None-Match, If-Range carries exactly one validator, never a
+    comma-separated list, and a weak ETag (W/"...") is never a valid match
+    (RFC 9110 13.1.5). So this is just two exact string comparisons: against
+    ETag, then against Last-Modified.
+    """
+    lowered = {k.lower(): v for k, v in response_headers.items()}
+    etag = lowered.get('etag')
+    last_modified = lowered.get('last-modified')
+    if etag is not None and if_range == etag:
+        return True
+    if last_modified is not None and if_range == last_modified:
+        return True
     return False
 
 

@@ -388,6 +388,17 @@ def create_app(settings):
                 return get_accessdenied_response()
             return get_read_access_acl()
 
+        def _handle_or_denied(handle):
+            """Apply the same 404-masking rule to an open_object() result.
+            Returns a Response to short-circuit with, or None if handle is a
+            real ObjectHandle that the caller should keep going with.
+            """
+            if not isinstance(handle, ObjectHandle):
+                if handle.status_code == 404 and not target_config.browseable:
+                    return get_accessdenied_response()
+                return handle
+            return None
+
         async def get_object_or_denied(key):
             """GetObject with S3-style 404 masking: on unbrowseable buckets a
             missing key returns 403 AccessDenied so clients can't probe which
@@ -402,15 +413,33 @@ def create_app(settings):
             targets ever become a hot path.
             """
             handle = await client.open_object(key, request.headers.get("range"))
-            if not isinstance(handle, ObjectHandle):
-                if handle.status_code == 404 and not target_config.browseable:
-                    return get_accessdenied_response()
-                return handle
+            denied = _handle_or_denied(handle)
+            if denied is not None:
+                return denied
+
+            if_range = request.headers.get("if-range")
+            if if_range is not None and handle.status_code == 206 \
+                    and not if_range_matches(if_range, handle.headers):
+                # RFC 9110 13.1.5: a stale If-Range validator means the Range
+                # must be ignored and the full representation served instead —
+                # otherwise a client resuming a partial download against a
+                # file that's since been overwritten would silently stitch
+                # bytes from two versions into one corrupt chunk.
+                handle.close()
+                handle = await client.open_object(key, None)
+                denied = _handle_or_denied(handle)
+                if denied is not None:
+                    return denied
+
             not_modified = check_not_modified(request.headers, handle.headers)
             if not_modified is not None:
                 handle.close()
                 return not_modified
-            return client.stream_object(handle)
+            try:
+                return client.stream_object(handle)
+            except Exception:
+                handle.close()
+                raise
 
         if list_type:
             if not target_path:

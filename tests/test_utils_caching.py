@@ -4,6 +4,7 @@ from x2s3.utils import (
     CACHE_CONTROL_PUBLIC,
     check_not_modified,
     format_http_date,
+    if_range_matches,
     make_file_etag,
 )
 
@@ -107,3 +108,22 @@ def test_naive_if_modified_since_does_not_crash():
 def test_make_file_etag_wire_format_is_pinned():
     # Fileglancer's make_etag must produce this byte-for-byte for the same file.
     assert make_file_etag(1755172800.0, 1234) == '"1755172800.000000-1234"'
+
+
+def test_if_range_matches_etag():
+    assert if_range_matches(ETAG, RESPONSE_HEADERS) is True
+
+
+def test_if_range_matches_last_modified():
+    assert if_range_matches(LAST_MODIFIED, RESPONSE_HEADERS) is True
+
+
+def test_if_range_stale_validator_does_not_match():
+    assert if_range_matches('"stale-etag"', RESPONSE_HEADERS) is False
+
+
+def test_if_range_weak_etag_never_matches():
+    # RFC 9110 13.1.5: a weak validator is never valid in If-Range, even if
+    # its underlying tag matches -- so this is a plain string comparison,
+    # not the weak-stripping If-None-Match does.
+    assert if_range_matches(f"W/{ETAG}", RESPONSE_HEADERS) is False

@@ -243,12 +243,19 @@ class FileProxyClient(ProxyClient):
             if range_header:
                 range_result = parse_range_header(range_header, file_size)
                 if range_result is None:
-                    # Invalid range, return 416 Range Not Satisfiable
+                    # Invalid range, return 416 Range Not Satisfiable.
+                    # Cache-Control/ETag are dropped here (unlike the 200/206
+                    # branches below): a shared cache keys on URI+method, not
+                    # Range, so an explicitly cacheable 416 could be served
+                    # back for a later plain GET and make the object look
+                    # broken for an hour.
                     file_handle.close()
-                    headers["Content-Range"] = f"bytes */{file_size}"
+                    error_headers = {k: v for k, v in headers.items()
+                                      if k not in ("Cache-Control", "ETag")}
+                    error_headers["Content-Range"] = f"bytes */{file_size}"
                     return Response(
                         status_code=416,
-                        headers=headers
+                        headers=error_headers
                     )
 
                 start, end = range_result
