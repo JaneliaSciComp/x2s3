@@ -202,7 +202,9 @@ class FileProxyClient(ProxyClient):
             stats = os.stat(path)
             file_size = stats.st_size
             headers["Content-Length"] = str(file_size)
-            headers["Last-Modified"] = format_timestamp_s3(stats.st_mtime)
+            headers["Last-Modified"] = format_http_date(stats.st_mtime)
+            headers["ETag"] = make_file_etag(stats.st_mtime, file_size)
+            headers["Cache-Control"] = CACHE_CONTROL_PUBLIC
 
             return Response(headers=headers)
         except Exception as e:
@@ -233,7 +235,9 @@ class FileProxyClient(ProxyClient):
             file_handle = open(path, "rb")
             stats = os.fstat(file_handle.fileno())
             file_size = stats.st_size
-            headers["Last-Modified"] = format_timestamp_s3(stats.st_mtime)
+            headers["Last-Modified"] = format_http_date(stats.st_mtime)
+            headers["ETag"] = make_file_etag(stats.st_mtime, file_size)
+            headers["Cache-Control"] = CACHE_CONTROL_PUBLIC
 
             # Handle range requests
             if range_header:

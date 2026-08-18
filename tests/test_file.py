@@ -271,3 +271,47 @@ def test_unbrowseable_head(app):
         assert response.status_code == 200
         response = client.head("/local-files/missing")
         assert response.status_code == 404
+
+
+def test_file_get_has_caching_headers(app):
+    with TestClient(app) as client:
+        response = client.get("/local-files/README.md")
+        assert response.status_code == 200
+        assert response.headers['cache-control'] == "public, max-age=3600"
+        assert response.headers['etag'].startswith('"')
+
+
+def test_file_head_has_caching_headers(app):
+    with TestClient(app) as client:
+        response = client.head("/local-files/README.md")
+        assert response.status_code == 200
+        assert response.headers['cache-control'] == "public, max-age=3600"
+        assert response.headers['etag'] == client.get("/local-files/README.md").headers['etag']
+
+
+def test_file_last_modified_is_http_date(app):
+    # The S3 ISO format is for listing XML; a header must be an HTTP-date or
+    # browsers and shared caches cannot use it.
+    from email.utils import parsedate_to_datetime
+    with TestClient(app) as client:
+        response = client.head("/local-files/README.md")
+        assert response.headers['last-modified'].endswith("GMT")
+        assert parsedate_to_datetime(response.headers['last-modified']) is not None
+
+
+def test_file_ranged_response_has_caching_headers(app):
+    with TestClient(app) as client:
+        response = client.get("/local-files/README.md", headers={"Range": "bytes=0-9"})
+        assert response.status_code == 206
+        assert response.headers['cache-control'] == "public, max-age=3600"
+        assert response.headers['etag'].startswith('"')
+
+
+def test_listing_keeps_s3_iso_timestamps(app):
+    # Only the header format changes; the XML body still speaks S3.
+    with TestClient(app) as client:
+        response = client.get("/local-files?list-type=2&prefix=tests/&max-keys=1")
+        root = parse_xml(response.text)
+        last_modified = root.find('Contents').find('LastModified').text
+        assert last_modified.endswith("Z")
+        assert "GMT" not in last_modified
