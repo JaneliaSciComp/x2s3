@@ -170,6 +170,7 @@ class AiobotoProxyClient(ProxyClient):
                 "Accept-Ranges": "bytes",
                 "Content-Length": str(s3_res.get("ContentLength")),
                 "Last-Modified": s3_res.get("LastModified").strftime("%a, %d %b %Y %H:%M:%S GMT"),
+                "Cache-Control": CACHE_CONTROL_PUBLIC,
             }
 
             if self.proxy_etag:
@@ -196,6 +197,7 @@ class AiobotoProxyClient(ProxyClient):
         headers = {
             'Accept-Ranges': "bytes",
             'Content-Type': content_type,
+            'Cache-Control': CACHE_CONTROL_PUBLIC,
         }
 
         if content_type == 'application/octet-stream':

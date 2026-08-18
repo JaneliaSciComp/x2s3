@@ -160,6 +160,7 @@ def test_head_object(app):
     with TestClient(app) as client:
         response = client.head("/janelia-data-examples/jrc_mus_lung_covid.n5/attributes.json")
         assert response.status_code == 200
+        assert response.headers['cache-control'] == "public, max-age=3600"
         response = client.head("/janelia-data-examples/jrc_mus_lung_covid.n5/")
         assert response.status_code == 404
 
@@ -178,6 +179,7 @@ def test_get_object(app):
     with TestClient(app) as client:
         response = client.get("/janelia-data-examples/jrc_mus_lung_covid.n5/attributes.json")
         assert response.status_code == 200
+        assert response.headers['cache-control'] == "public, max-age=3600"
         json_obj = response.json()
         assert 'n5' in json_obj
 
