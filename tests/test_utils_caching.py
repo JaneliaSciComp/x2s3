@@ -95,3 +95,15 @@ def test_response_header_lookup_is_case_insensitive():
 
 def test_missing_etag_never_matches():
     assert check_not_modified({"if-none-match": ETAG}, {"Cache-Control": CACHE_CONTROL_PUBLIC}) is None
+
+
+def test_naive_if_modified_since_does_not_crash():
+    # parsedate_to_datetime returns a naive datetime for a zoneless date, and
+    # comparing it to our timezone-aware one raises TypeError.
+    assert check_not_modified({"if-modified-since": "Thu, 14 Aug 2026 12:00:00"},
+                              RESPONSE_HEADERS) is None
+
+
+def test_make_file_etag_wire_format_is_pinned():
+    # Fileglancer's make_etag must produce this byte-for-byte for the same file.
+    assert make_file_etag(1755172800.0, 1234) == '"1755172800.000000-1234"'

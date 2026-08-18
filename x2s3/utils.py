@@ -323,9 +323,13 @@ def check_not_modified(request_headers, response_headers):
         try:
             since = parsedate_to_datetime(if_modified_since)
             modified = parsedate_to_datetime(last_modified)
+            if since is None or modified is None or modified > since:
+                return None
         except (TypeError, ValueError):
-            return None
-        if since is None or modified is None or modified > since:
+            # parsedate_to_datetime returns a NAIVE datetime for a date with no
+            # zone, which clients do send. Comparing it to our aware one raises
+            # TypeError, so the comparison has to sit inside the guard or a
+            # slightly-off header becomes a 500.
             return None
 
     headers = {name: lowered[name.lower()]
