@@ -3,6 +3,7 @@ import secrets
 import urllib
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from email.utils import formatdate, parsedate_to_datetime
 from mimetypes import guess_type
 from html import escape
 
@@ -252,3 +253,82 @@ def guess_content_type(filename):
             return 'text/plain+yaml'
         else:
             return 'application/octet-stream'
+
+
+# Zarr chunks are effectively immutable by path, but datasets are sometimes
+# overwritten in place, so one hour is the worst-case staleness we accept in
+# exchange for stopping sub-second chunk re-fetch storms. No `immutable`.
+CACHE_CONTROL_PUBLIC = "public, max-age=3600"
+
+
+def make_file_etag(mtime: float, size: int) -> str:
+    """Strong ETag for a file, derived from its mtime and size.
+
+    Same scheme as fileglancer's make_etag, so the two repos agree on the
+    validator for the same file.
+
+    ponytail: mtime granularity is the ceiling — two writes within the
+    filesystem's mtime resolution that also keep the same size would share an
+    ETag. Switch to a content hash if that ever matters.
+    """
+    return f'"{mtime:.6f}-{size}"'
+
+
+def format_http_date(timestamp) -> str:
+    """Format a POSIX timestamp as an RFC 7231 HTTP-date.
+
+    Distinct from format_timestamp_s3, which produces the ISO form S3 uses in
+    listing XML bodies. Headers must use this one or caches cannot read them.
+    """
+    return formatdate(timestamp, usegmt=True)
+
+
+def _etag_matches(if_none_match: str, etag: str) -> bool:
+    """True if any entity-tag in an If-None-Match header matches ours."""
+    if not etag:
+        return False
+    for candidate in if_none_match.split(','):
+        candidate = candidate.strip()
+        if candidate == '*':
+            return True
+        if candidate.startswith('W/'):
+            candidate = candidate[2:]
+        if candidate == etag:
+            return True
+    return False
+
+
+def check_not_modified(request_headers, response_headers):
+    """Return a 304 response if the request's validators match, else None.
+
+    request_headers is a case-insensitive mapping (Starlette Headers).
+    response_headers may be a plain dict with canonical capitalization, which
+    is what Fileglancer receives back from its user worker, so lookups here are
+    lowercased explicitly.
+    """
+    lowered = {k.lower(): v for k, v in response_headers.items()}
+    etag = lowered.get('etag')
+    last_modified = lowered.get('last-modified')
+
+    if_none_match = request_headers.get('if-none-match')
+    if if_none_match is not None:
+        # If-None-Match wins outright: when it is present and does not match,
+        # If-Modified-Since must not be consulted (RFC 9110 13.1.3).
+        if not _etag_matches(if_none_match, etag):
+            return None
+    else:
+        if_modified_since = request_headers.get('if-modified-since')
+        if not if_modified_since or not last_modified:
+            return None
+        try:
+            since = parsedate_to_datetime(if_modified_since)
+            modified = parsedate_to_datetime(last_modified)
+        except (TypeError, ValueError):
+            return None
+        if since is None or modified is None or modified > since:
+            return None
+
+    headers = {name: lowered[name.lower()]
+               for name in ('ETag', 'Last-Modified', 'Cache-Control')
+               if lowered.get(name.lower())}
+    return Response(status_code=304, headers=headers)
