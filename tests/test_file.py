@@ -315,3 +315,71 @@ def test_listing_keeps_s3_iso_timestamps(app):
         last_modified = root.find('Contents').find('LastModified').text
         assert last_modified.endswith("Z")
         assert "GMT" not in last_modified
+
+
+def test_get_returns_304_for_matching_etag(app):
+    with TestClient(app) as client:
+        first = client.get("/local-files/README.md")
+        assert first.status_code == 200
+        second = client.get("/local-files/README.md",
+                            headers={"If-None-Match": first.headers['etag']})
+        assert second.status_code == 304
+        assert second.content == b""
+        assert second.headers['cache-control'] == "public, max-age=3600"
+
+
+def test_get_returns_200_for_stale_etag(app):
+    with TestClient(app) as client:
+        response = client.get("/local-files/README.md",
+                              headers={"If-None-Match": '"stale-1"'})
+        assert response.status_code == 200
+        assert response.content
+
+
+def test_get_returns_304_for_if_modified_since(app):
+    with TestClient(app) as client:
+        first = client.get("/local-files/README.md")
+        second = client.get("/local-files/README.md",
+                            headers={"If-Modified-Since": first.headers['last-modified']})
+        assert second.status_code == 304
+
+
+def test_if_none_match_beats_range(app):
+    # RFC 9110 13.1.3: a matching If-None-Match wins over Range, so this is a
+    # 304 rather than a 206.
+    with TestClient(app) as client:
+        first = client.get("/local-files/README.md")
+        second = client.get("/local-files/README.md",
+                            headers={"If-None-Match": first.headers['etag'],
+                                     "Range": "bytes=0-9"})
+        assert second.status_code == 304
+
+
+def test_head_returns_304_for_matching_etag(app):
+    with TestClient(app) as client:
+        first = client.head("/local-files/README.md")
+        second = client.head("/local-files/README.md",
+                             headers={"If-None-Match": first.headers['etag']})
+        assert second.status_code == 304
+
+
+def test_304_does_not_leak_file_handles(app):
+    # The handle is opened before the validator check, so the 304 path has to
+    # close it explicitly.
+    import gc
+    import warnings
+    with TestClient(app) as client:
+        etag = client.get("/local-files/README.md").headers['etag']
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", ResourceWarning)
+            for _ in range(20):
+                assert client.get("/local-files/README.md",
+                                  headers={"If-None-Match": etag}).status_code == 304
+            gc.collect()
+
+
+def test_304_not_returned_for_missing_key(app):
+    with TestClient(app) as client:
+        response = client.get("/local-files/does-not-exist.txt",
+                              headers={"If-None-Match": "*"})
+        assert response.status_code == 404

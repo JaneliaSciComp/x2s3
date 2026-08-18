@@ -19,6 +19,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from x2s3.utils import *
 from x2s3 import client_registry
+from x2s3.client import ObjectHandle
 from x2s3.settings import get_settings, Target
 
 # Use uvloop for better async performance
@@ -390,11 +391,26 @@ def create_app(settings):
         async def get_object_or_denied(key):
             """GetObject with S3-style 404 masking: on unbrowseable buckets a
             missing key returns 403 AccessDenied so clients can't probe which
-            keys exist (real S3 does this when s3:ListBucket is denied)."""
-            response = await client.get_object(key, request.headers.get("range"))
-            if response.status_code == 404 and not target_config.browseable:
-                return get_accessdenied_response()
-            return response
+            keys exist (real S3 does this when s3:ListBucket is denied).
+
+            Opens the object first so the validator check can see its ETag,
+            then either answers 304 or streams. The handle is closed on the
+            304 path — nothing else will.
+
+            ponytail: for S3 targets this means an upstream fetch is opened and
+            abandoned on a 304. Forward IfNoneMatch into client_aioboto if S3
+            targets ever become a hot path.
+            """
+            handle = await client.open_object(key, request.headers.get("range"))
+            if not isinstance(handle, ObjectHandle):
+                if handle.status_code == 404 and not target_config.browseable:
+                    return get_accessdenied_response()
+                return handle
+            not_modified = check_not_modified(request.headers, handle.headers)
+            if not_modified is not None:
+                handle.close()
+                return not_modified
+            return client.stream_object(handle)
 
         if list_type:
             if not target_path:
@@ -467,6 +483,10 @@ def create_app(settings):
             if response.status_code == 404 and not target_config.browseable:
                 # Mask missing keys on unbrowseable buckets; HEAD carries no body
                 return Response(status_code=403, media_type="application/xml")
+            if response.status_code == 200:
+                not_modified = check_not_modified(request.headers, response.headers)
+                if not_modified is not None:
+                    return not_modified
             return response
         except Exception:
             logger.opt(exception=sys.exc_info()).info("Error requesting head")
