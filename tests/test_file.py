@@ -363,19 +363,36 @@ def test_head_returns_304_for_matching_etag(app):
         assert second.status_code == 304
 
 
-def test_304_does_not_leak_file_handles(app):
+def test_304_does_not_leak_file_handles(app, monkeypatch):
     # The handle is opened before the validator check, so the 304 path has to
-    # close it explicitly.
-    import gc
-    import warnings
+    # close it explicitly. Neither a ResourceWarning trap nor an open-fd count
+    # can observe this reliably: CPython's refcounting deallocates the
+    # underlying file object (running its own closing finalizer) the instant
+    # the local `handle` variable in get_object_or_denied goes out of scope,
+    # before either detector gets a chance to look. So this spies directly on
+    # FileObjectHandle.close() to confirm the 304 path actually calls it.
+    from x2s3.client_file import FileObjectHandle
+
+    calls = []
+    original_close = FileObjectHandle.close
+
+    def spy_close(self):
+        calls.append(self)
+        original_close(self)
+
+    monkeypatch.setattr(FileObjectHandle, "close", spy_close)
+
     with TestClient(app) as client:
+        # The initial 200 GET streams its own handle closed when the response
+        # finishes, which also calls close() — so only count closes seen
+        # during the 304 loop below, not this warm-up call.
         etag = client.get("/local-files/README.md").headers['etag']
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", ResourceWarning)
-            for _ in range(20):
-                assert client.get("/local-files/README.md",
-                                  headers={"If-None-Match": etag}).status_code == 304
-            gc.collect()
+        before = len(calls)
+        for _ in range(3):
+            assert client.get("/local-files/README.md",
+                              headers={"If-None-Match": etag}).status_code == 304
+
+    assert len(calls) - before == 3
 
 
 def test_304_not_returned_for_missing_key(app):
