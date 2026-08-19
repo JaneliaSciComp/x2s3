@@ -165,3 +165,34 @@ def test_get_object_precedence(app, s3_client):
     assert response['ResponseMetadata']['HTTPStatusCode'] == 200
     json_obj = response['Body'].read().decode('utf-8')
     assert 'n5' in json_obj
+
+
+def test_head_object_last_modified_is_locale_independent():
+    # Pure unit test, no server needed. botocore hands head_object a real
+    # datetime, and formatting it with strftime('%a, %d %b %Y ...') expands
+    # %a/%b using the process locale — under e.g. LC_TIME=de_DE that yields
+    # '.., 18 Dez ...', which no cache or client can parse, silently killing
+    # 304 revalidation for S3 targets. No non-English locale is installed in
+    # CI, so simulate one with a datetime whose strftime is locale-poisoned.
+    import asyncio
+    from datetime import datetime, timezone
+    from email.utils import parsedate_to_datetime
+
+    from x2s3.client_aioboto import AiobotoProxyClient
+
+    class GermanLocaleDatetime(datetime):
+        def strftime(self, fmt):
+            return super().strftime(fmt).replace('Dec', 'Dez')
+
+    last_modified = GermanLocaleDatetime(2026, 12, 18, 12, 0, 0,
+                                         tzinfo=timezone.utc)
+
+    class StubS3:
+        async def head_object(self, **kwargs):
+            return {"ContentLength": 1234, "LastModified": last_modified}
+
+    client = AiobotoProxyClient({'target_name': 'test'}, bucket='test-bucket')
+    client.client = StubS3()
+
+    response = asyncio.run(client.head_object('some/key.json'))
+    assert parsedate_to_datetime(response.headers['last-modified']) == last_modified

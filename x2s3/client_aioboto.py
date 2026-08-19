@@ -169,7 +169,8 @@ class AiobotoProxyClient(ProxyClient):
             headers = {
                 "Accept-Ranges": "bytes",
                 "Content-Length": str(s3_res.get("ContentLength")),
-                "Last-Modified": s3_res.get("LastModified").strftime("%a, %d %b %Y %H:%M:%S GMT"),
+                # format_http_date, not strftime: %a/%b are locale-dependent
+                "Last-Modified": format_http_date(s3_res.get("LastModified").timestamp()),
                 "Cache-Control": CACHE_CONTROL_PUBLIC,
             }
 
