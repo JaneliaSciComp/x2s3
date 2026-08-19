@@ -127,3 +127,12 @@ def test_if_range_weak_etag_never_matches():
     # its underlying tag matches -- so this is a plain string comparison,
     # not the weak-stripping If-None-Match does.
     assert if_range_matches(f"W/{ETAG}", RESPONSE_HEADERS) is False
+
+
+def test_star_if_none_match_matches_even_without_etag():
+    # RFC 9110 13.1.2: '*' matches any existing representation, so it must
+    # yield a 304 even when the response carries no ETag — the default for
+    # S3 targets, which ship with proxy_etag=False.
+    response = check_not_modified({"if-none-match": "*"},
+                                  {"Last-Modified": LAST_MODIFIED})
+    assert response is not None and response.status_code == 304

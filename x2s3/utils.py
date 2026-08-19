@@ -295,12 +295,14 @@ def format_http_date(timestamp) -> str:
 
 def _etag_matches(if_none_match: str, etag: str) -> bool:
     """True if any entity-tag in an If-None-Match header matches ours."""
-    if not etag:
-        return False
     for candidate in if_none_match.split(','):
         candidate = candidate.strip()
         if candidate == '*':
+            # '*' matches any existing representation (RFC 9110 13.1.2),
+            # even one carrying no ETag — the guard below must not run first.
             return True
+        if not etag:
+            continue
         if candidate.startswith('W/'):
             candidate = candidate[2:]
         if candidate == etag:
