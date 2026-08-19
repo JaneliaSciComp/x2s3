@@ -414,11 +414,34 @@ def create_app(settings):
             """
             handle = await client.open_object(key, request.headers.get("range"))
             denied = _handle_or_denied(handle)
-            if denied is not None:
+            if denied is not None and denied.status_code != 416:
                 return denied
 
             if_range = request.headers.get("if-range")
-            if if_range is not None and handle.status_code == 206 \
+            if denied is not None:
+                # 416 from an unsatisfiable Range. RFC 9110 13.2.2 evaluates
+                # If-None-Match/If-Modified-Since (-> 304) and a stale
+                # If-Range (-> ignore the Range, serve the full body) before
+                # Range, so the 416 can't short-circuit them. It also carries
+                # no validators (see the client 416 branches), so reopen
+                # without the Range to get some.
+                if if_range is None \
+                        and "if-none-match" not in request.headers \
+                        and "if-modified-since" not in request.headers:
+                    return denied
+                handle = await client.open_object(key, None)
+                full_denied = _handle_or_denied(handle)
+                if full_denied is not None:
+                    return full_denied
+                if (if_range is None or if_range_matches(if_range, handle.headers)) \
+                        and check_not_modified(request.headers, handle.headers) is None:
+                    # Validators say the client's copy is stale and the Range
+                    # still applies, so it is still unsatisfiable.
+                    handle.close()
+                    return denied
+                # Fall through: check_not_modified below answers the 304, or
+                # a stale If-Range means this full handle streams as a 200.
+            elif if_range is not None and handle.status_code == 206 \
                     and not if_range_matches(if_range, handle.headers):
                 # RFC 9110 13.1.5: a stale If-Range validator means the Range
                 # must be ignored and the full representation served instead —

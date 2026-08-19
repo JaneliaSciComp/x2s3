@@ -414,6 +414,46 @@ def test_416_response_is_not_cacheable(app):
         assert 'etag' not in response.headers
 
 
+def test_if_none_match_beats_unsatisfiable_range(app):
+    # RFC 9110 13.2.2 evaluates If-None-Match before Range, so a matching
+    # validator yields 304 even when the Range is unsatisfiable.
+    with TestClient(app) as client:
+        first = client.get("/local-files/README.md")
+        second = client.get("/local-files/README.md",
+                            headers={"If-None-Match": first.headers['etag'],
+                                     "Range": "bytes=99999999-100000000"})
+        assert second.status_code == 304
+
+
+def test_if_range_stale_with_unsatisfiable_range_returns_full_body(app):
+    # RFC 9110 13.1.5: a stale If-Range means the Range is ignored entirely,
+    # including one that would otherwise be unsatisfiable.
+    with TestClient(app) as client:
+        full = client.get("/local-files/README.md")
+        response = client.get("/local-files/README.md",
+                              headers={"Range": "bytes=99999999-100000000",
+                                       "If-Range": '"stale-etag"'})
+        assert response.status_code == 200
+        assert response.content == full.content
+
+
+def test_unsatisfiable_range_with_fresh_if_range_still_416(app):
+    with TestClient(app) as client:
+        full = client.get("/local-files/README.md")
+        response = client.get("/local-files/README.md",
+                              headers={"Range": "bytes=99999999-100000000",
+                                       "If-Range": full.headers['etag']})
+        assert response.status_code == 416
+
+
+def test_unsatisfiable_range_with_stale_if_none_match_still_416(app):
+    with TestClient(app) as client:
+        response = client.get("/local-files/README.md",
+                              headers={"Range": "bytes=99999999-100000000",
+                                       "If-None-Match": '"stale-1"'})
+        assert response.status_code == 416
+
+
 def test_if_range_matching_etag_returns_ranged_body(app):
     with TestClient(app) as client:
         full = client.get("/local-files/README.md")
