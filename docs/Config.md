@@ -19,7 +19,6 @@ client_options:
     max_pool_connections: 50
   file:
     buffer_size: 65536  # 64 KB chunks for streaming
-    calculate_etags: false
 ```
 
 ## Targets
@@ -41,7 +40,6 @@ Each target may have the following properties:
     * *file*: Local filesystem targets. Options:
         * `path`: Path to the root
         * `buffer_size`: Size of chunks (in bytes) when streaming file content (default: 8192)
-        * `calculate_etags`: If true, then the etags will be calculated by hashing the content of each file. This is much more expensive and may not be needed for all use cases.
 
 ### Botocore Config Options
 

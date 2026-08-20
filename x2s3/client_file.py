@@ -1,7 +1,6 @@
 import os
 import sys
 from dataclasses import dataclass
-from hashlib import md5
 from pathlib import Path
 from typing import BinaryIO, Optional, Tuple
 from typing_extensions import override
@@ -33,8 +32,6 @@ class FileObjectHandle(ObjectHandle):
             self.file_handle.close()
             self.file_handle = None
 
-
-STATIC_ETAG = '"11111111111111111111111111111111"'
 
 def handle_exception(e, key=None):
     """ Handle various cases of generic errors.
@@ -150,22 +147,12 @@ def file_iterator(handle: FileObjectHandle, buffer_size: int = DEFAULT_BUFFER_SI
         handle.close()
 
 
-# From https://teppen.io/2018/10/23/aws_s3_verify_etags/
-def calc_etag(inputfile, partsize):
-    md5_digests = []
-    with open(inputfile, 'rb') as f:
-        for chunk in iter(lambda: f.read(partsize), b''):
-            md5_digests.append(md5(chunk).digest())
-    return md5(b''.join(md5_digests)).hexdigest() + '-' + str(len(md5_digests))
-
-
 class FileProxyClient(ProxyClient):
 
     def __init__(self, proxy_kwargs, **kwargs):
         self.proxy_kwargs = proxy_kwargs or {}
         self.target_name = self.proxy_kwargs['target_name']
         self.root_path = str(Path(kwargs['path']).resolve())
-        self.calculate_etags = kwargs.get('calculate_etags', False)
         self.buffer_size = kwargs.get('buffer_size', DEFAULT_BUFFER_SIZE)
 
     def _safe_path(self, key: str) -> Optional[str]:
@@ -408,15 +395,13 @@ class FileProxyClient(ProxyClient):
                         stats = os.stat(file_path)
                         file_size = stats.st_size
 
-                        etag = STATIC_ETAG
-                        if self.calculate_etags:
-                            # This is VERY slow because it needs to read every file
-                            etag = f'"{calc_etag(file_path, 8388608)}"'
-
                         contents.append({
                             'Key': key,
                             'Size': str(file_size),
-                            'ETag': etag,
+                            # Same validator head_object/open_object return, so a
+                            # client can revalidate what it found here and get a
+                            # 304. Free: the stat above already has both fields.
+                            'ETag': make_file_etag(stats.st_mtime, file_size),
                             'LastModified': format_timestamp_s3(stats.st_mtime),
                             'StorageClass': 'STANDARD'
                         })

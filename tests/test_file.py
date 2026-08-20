@@ -5,7 +5,6 @@ from fastapi.testclient import TestClient
 from pydantic import HttpUrl
 
 from x2s3.app import create_app
-from x2s3.client_file import STATIC_ETAG
 from x2s3.settings import Target, Settings
 from x2s3.utils import parse_xml
 
@@ -18,14 +17,6 @@ def get_settings():
             name='local-files',
             client='file',
             options={'path':'.'}
-        ),
-        Target(
-            name='local-files-with-etags',
-            client='file',
-            options={
-                'path':'.',
-                'calculate_etags':'true'
-            }
         ),
         Target(
             name='hidden-files',
@@ -79,21 +70,8 @@ def test_list_objects(app):
         for content in contents:
             etag = content.find('ETag').text
             assert etag.startswith('"')
-            assert etag==STATIC_ETAG
-
-
-def test_list_objects_with_etags(app):
-    with TestClient(app) as client:
-        bucket_name = 'local-files-with-etags'
-        response = client.get(f"/{bucket_name}?list-type=2&prefix=tests/")
-        assert response.status_code == 200
-        root = parse_xml(response.text)
-        assert root.tag == "ListBucketResult"
-        assert root.find('Name').text == bucket_name
-        for content in root.findall('Contents'):
-            etag = content.find('ETag').text
-            assert etag.startswith('"')
-            assert etag!=STATIC_ETAG
+            # mtime-size, not a constant: see make_file_etag
+            assert etag != '"11111111111111111111111111111111"'
 
 
 def test_list_objects_delimiter(app):
@@ -502,3 +480,16 @@ def test_head_and_get_agree_on_caching_headers(app):
         get = client.get("/local-files/README.md")
         for header in ("etag", "last-modified", "cache-control"):
             assert head.headers[header] == get.headers[header], header
+
+
+def test_listing_etag_matches_get_etag(app):
+    # A client that caches an object it found in a listing must be able to
+    # revalidate with that listing's ETag. A constant ETag guaranteed a miss.
+    with TestClient(app) as client:
+        listing = client.get("/local-files?list-type=2&prefix=tests/&max-keys=1")
+        entry = parse_xml(listing.text).find('Contents')
+        key, listed = entry.find('Key').text, entry.find('ETag').text
+
+        assert client.get(f"/local-files/{key}").headers['etag'] == listed
+        assert client.get(f"/local-files/{key}",
+                          headers={"If-None-Match": listed}).status_code == 304
