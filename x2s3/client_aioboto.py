@@ -3,6 +3,7 @@ import os
 import sys
 import typing
 from dataclasses import dataclass
+from email.utils import parsedate_to_datetime
 from typing import Any
 from typing_extensions import override
 
@@ -30,6 +31,12 @@ class S3ObjectHandle(ObjectHandle):
             if hasattr(self.body, 'close'):
                 self.body.close()
             self._closed = True
+
+
+def _is_not_modified(e):
+    """True for the ClientError S3 raises when a conditional GET matches."""
+    return (isinstance(e, botocore.exceptions.ClientError)
+            and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 304)
 
 
 def handle_s3_exception(e, key=None):
@@ -169,7 +176,11 @@ class AiobotoProxyClient(ProxyClient):
             headers = {
                 "Accept-Ranges": "bytes",
                 "Content-Length": str(s3_res.get("ContentLength")),
-                "Last-Modified": s3_res.get("LastModified").strftime("%a, %d %b %Y %H:%M:%S GMT"),
+                # format_http_date, not strftime: %a/%b are locale-dependent
+                "Last-Modified": format_http_date(s3_res.get("LastModified").timestamp()),
+                # Our default only applies to objects carrying no policy of
+                # their own (see open_object)
+                "Cache-Control": s3_res.get("CacheControl") or CACHE_CONTROL_PUBLIC,
             }
 
             if self.proxy_etag:
@@ -184,8 +195,15 @@ class AiobotoProxyClient(ProxyClient):
 
 
     @override
-    async def open_object(self, key: str, range_header: str = None):
-        """Open an S3 object and return a handle for streaming."""
+    async def open_object(self, key: str, range_header: str = None,
+                          if_none_match: str = None,
+                          if_modified_since: str = None):
+        """Open an S3 object and return a handle for streaming.
+
+        Conditional headers are forwarded to S3, which evaluates them itself
+        and answers 304 without sending a body. Without that, revalidating a
+        cached object means fetching it in full and discarding it.
+        """
         real_key = key
         if self.bucket_prefix:
             real_key = os.path.join(self.bucket_prefix, key) if key else self.bucket_prefix
@@ -196,6 +214,7 @@ class AiobotoProxyClient(ProxyClient):
         headers = {
             'Accept-Ranges': "bytes",
             'Content-Type': content_type,
+            'Cache-Control': CACHE_CONTROL_PUBLIC,
         }
 
         if content_type == 'application/octet-stream':
@@ -212,6 +231,17 @@ class AiobotoProxyClient(ProxyClient):
             }
             if range_header:
                 get_object_params["Range"] = range_header
+            if if_none_match:
+                get_object_params["IfNoneMatch"] = if_none_match
+            if if_modified_since:
+                try:
+                    get_object_params["IfModifiedSince"] = \
+                        parsedate_to_datetime(if_modified_since)
+                except (TypeError, ValueError):
+                    # botocore requires a datetime, so a malformed client
+                    # header just skips the upstream condition rather than
+                    # turning into a 500. The dispatcher still checks locally.
+                    pass
 
             # Call S3 get_object
             result = await self.client.get_object(**get_object_params)
@@ -233,6 +263,13 @@ class AiobotoProxyClient(ProxyClient):
             if "last-modified" in res_headers:
                 headers["Last-Modified"] = res_headers["last-modified"]
 
+            if "cache-control" in res_headers:
+                # The origin's policy wins over our default. Re-advertising a
+                # no-store or private object as publicly cacheable for an hour
+                # would let browsers and the shared nginx cache in front of
+                # x2s3 hold on to content the origin said not to store.
+                headers["Cache-Control"] = res_headers["cache-control"]
+
             if self.proxy_etag and "etag" in res_headers:
                 headers["ETag"] = res_headers["etag"]
 
@@ -247,7 +284,28 @@ class AiobotoProxyClient(ProxyClient):
             )
 
         except Exception as e:
+            if _is_not_modified(e):
+                return self._not_modified_response(e, headers)
             return handle_s3_exception(e, key)
+
+
+    def _not_modified_response(self, e, headers):
+        """Build the 304 for a conditional GET that S3 answered as unchanged.
+
+        S3 returns the validators on its 304, so they are echoed back rather
+        than re-fetched. A 304 must carry no body, which is also why this
+        cannot go through handle_s3_exception: that renders an XML error.
+        """
+        res_headers = e.response.get('ResponseMetadata', {}).get('HTTPHeaders', {})
+        not_modified_headers = {
+            'Cache-Control': res_headers.get('cache-control')
+                             or headers['Cache-Control'],
+        }
+        if 'last-modified' in res_headers:
+            not_modified_headers['Last-Modified'] = res_headers['last-modified']
+        if self.proxy_etag and 'etag' in res_headers:
+            not_modified_headers['ETag'] = res_headers['etag']
+        return Response(status_code=304, headers=not_modified_headers)
 
     @override
     def stream_object(self, handle: S3ObjectHandle):
@@ -261,20 +319,6 @@ class AiobotoProxyClient(ProxyClient):
             key=handle.key,
             content_length=handle.content_length,
         )
-
-    @override
-    async def get_object(self, key: str, range_header: str = None):
-        """Convenience method that combines open_object() and stream_object()."""
-        result = await self.open_object(key, range_header)
-        if isinstance(result, S3ObjectHandle):
-            try:
-                return self.stream_object(result)
-            except Exception:
-                # Ensure body is closed if stream_object fails
-                result.close()
-                raise
-        return result  # Error response
-
 
     @override
     async def list_objects_v2(self,

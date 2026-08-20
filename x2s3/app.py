@@ -19,6 +19,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from x2s3.utils import *
 from x2s3 import client_registry
+from x2s3.client import ObjectHandle
 from x2s3.settings import get_settings, Target
 
 # Use uvloop for better async performance
@@ -387,14 +388,88 @@ def create_app(settings):
                 return get_accessdenied_response()
             return get_read_access_acl()
 
+        def _handle_or_denied(handle):
+            """Apply the same 404-masking rule to an open_object() result.
+            Returns a Response to short-circuit with, or None if handle is a
+            real ObjectHandle that the caller should keep going with.
+            """
+            if not isinstance(handle, ObjectHandle):
+                if handle.status_code == 404 and not target_config.browseable:
+                    return get_accessdenied_response()
+                return handle
+            return None
+
+        async def _open(key, range_header):
+            """open_object with this request's conditional headers attached."""
+            return await client.open_object(
+                key, range_header,
+                request.headers.get("if-none-match"),
+                request.headers.get("if-modified-since"))
+
         async def get_object_or_denied(key):
             """GetObject with S3-style 404 masking: on unbrowseable buckets a
             missing key returns 403 AccessDenied so clients can't probe which
-            keys exist (real S3 does this when s3:ListBucket is denied)."""
-            response = await client.get_object(key, request.headers.get("range"))
-            if response.status_code == 404 and not target_config.browseable:
-                return get_accessdenied_response()
-            return response
+            keys exist (real S3 does this when s3:ListBucket is denied).
+
+            Opens the object first so the validator check can see its ETag,
+            then either answers 304 or streams. The handle is closed on the
+            304 path — nothing else will.
+
+            Backends that evaluate the conditional headers themselves return
+            a 304 straight out of _open with no body transferred; the
+            check_not_modified call below covers the ones that don't.
+            """
+            handle = await _open(key, request.headers.get("range"))
+            denied = _handle_or_denied(handle)
+            if denied is not None and denied.status_code != 416:
+                return denied
+
+            if_range = request.headers.get("if-range")
+            if denied is not None:
+                # 416 from an unsatisfiable Range. RFC 9110 13.2.2 evaluates
+                # If-None-Match/If-Modified-Since (-> 304) and a stale
+                # If-Range (-> ignore the Range, serve the full body) before
+                # Range, so the 416 can't short-circuit them. It also carries
+                # no validators (see the client 416 branches), so reopen
+                # without the Range to get some.
+                if if_range is None \
+                        and "if-none-match" not in request.headers \
+                        and "if-modified-since" not in request.headers:
+                    return denied
+                handle = await _open(key, None)
+                full_denied = _handle_or_denied(handle)
+                if full_denied is not None:
+                    return full_denied
+                if (if_range is None or if_range_matches(if_range, handle.headers)) \
+                        and check_not_modified(request.headers, handle.headers) is None:
+                    # Validators say the client's copy is stale and the Range
+                    # still applies, so it is still unsatisfiable.
+                    handle.close()
+                    return denied
+                # Fall through: check_not_modified below answers the 304, or
+                # a stale If-Range means this full handle streams as a 200.
+            elif if_range is not None and handle.status_code == 206 \
+                    and not if_range_matches(if_range, handle.headers):
+                # RFC 9110 13.1.5: a stale If-Range validator means the Range
+                # must be ignored and the full representation served instead —
+                # otherwise a client resuming a partial download against a
+                # file that's since been overwritten would silently stitch
+                # bytes from two versions into one corrupt chunk.
+                handle.close()
+                handle = await _open(key, None)
+                denied = _handle_or_denied(handle)
+                if denied is not None:
+                    return denied
+
+            not_modified = check_not_modified(request.headers, handle.headers)
+            if not_modified is not None:
+                handle.close()
+                return not_modified
+            try:
+                return client.stream_object(handle)
+            except Exception:
+                handle.close()
+                raise
 
         if list_type:
             if not target_path:
@@ -467,6 +542,10 @@ def create_app(settings):
             if response.status_code == 404 and not target_config.browseable:
                 # Mask missing keys on unbrowseable buckets; HEAD carries no body
                 return Response(status_code=403, media_type="application/xml")
+            if response.status_code == 200:
+                not_modified = check_not_modified(request.headers, response.headers)
+                if not_modified is not None:
+                    return not_modified
             return response
         except Exception:
             logger.opt(exception=sys.exc_info()).info("Error requesting head")

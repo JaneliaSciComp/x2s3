@@ -1,7 +1,6 @@
 import os
 import sys
 from dataclasses import dataclass
-from hashlib import md5
 from pathlib import Path
 from typing import BinaryIO, Optional, Tuple
 from typing_extensions import override
@@ -33,8 +32,6 @@ class FileObjectHandle(ObjectHandle):
             self.file_handle.close()
             self.file_handle = None
 
-
-STATIC_ETAG = '"11111111111111111111111111111111"'
 
 def handle_exception(e, key=None):
     """ Handle various cases of generic errors.
@@ -150,22 +147,12 @@ def file_iterator(handle: FileObjectHandle, buffer_size: int = DEFAULT_BUFFER_SI
         handle.close()
 
 
-# From https://teppen.io/2018/10/23/aws_s3_verify_etags/
-def calc_etag(inputfile, partsize):
-    md5_digests = []
-    with open(inputfile, 'rb') as f:
-        for chunk in iter(lambda: f.read(partsize), b''):
-            md5_digests.append(md5(chunk).digest())
-    return md5(b''.join(md5_digests)).hexdigest() + '-' + str(len(md5_digests))
-
-
 class FileProxyClient(ProxyClient):
 
     def __init__(self, proxy_kwargs, **kwargs):
         self.proxy_kwargs = proxy_kwargs or {}
         self.target_name = self.proxy_kwargs['target_name']
         self.root_path = str(Path(kwargs['path']).resolve())
-        self.calculate_etags = kwargs.get('calculate_etags', False)
         self.buffer_size = kwargs.get('buffer_size', DEFAULT_BUFFER_SIZE)
 
     def _safe_path(self, key: str) -> Optional[str]:
@@ -202,7 +189,9 @@ class FileProxyClient(ProxyClient):
             stats = os.stat(path)
             file_size = stats.st_size
             headers["Content-Length"] = str(file_size)
-            headers["Last-Modified"] = format_timestamp_s3(stats.st_mtime)
+            headers["Last-Modified"] = format_http_date(stats.st_mtime)
+            headers["ETag"] = make_file_etag(stats.st_mtime, file_size)
+            headers["Cache-Control"] = CACHE_CONTROL_PUBLIC
 
             return Response(headers=headers)
         except Exception as e:
@@ -210,8 +199,15 @@ class FileProxyClient(ProxyClient):
 
 
     @override
-    async def open_object(self, key: str, range_header: str = None):
-        """Open a file object and return a handle for streaming."""
+    async def open_object(self, key: str, range_header: str = None,
+                          if_none_match: str = None,
+                          if_modified_since: str = None):
+        """Open a file object and return a handle for streaming.
+
+        The conditional arguments are accepted for interface parity and
+        ignored: opening a local file is an open plus an fstat, so there is
+        nothing to save by evaluating them here rather than in the dispatcher.
+        """
         file_handle = None
         try:
             path = self._safe_path(key)
@@ -233,18 +229,27 @@ class FileProxyClient(ProxyClient):
             file_handle = open(path, "rb")
             stats = os.fstat(file_handle.fileno())
             file_size = stats.st_size
-            headers["Last-Modified"] = format_timestamp_s3(stats.st_mtime)
+            headers["Last-Modified"] = format_http_date(stats.st_mtime)
+            headers["ETag"] = make_file_etag(stats.st_mtime, file_size)
+            headers["Cache-Control"] = CACHE_CONTROL_PUBLIC
 
             # Handle range requests
             if range_header:
                 range_result = parse_range_header(range_header, file_size)
                 if range_result is None:
-                    # Invalid range, return 416 Range Not Satisfiable
+                    # Invalid range, return 416 Range Not Satisfiable.
+                    # Cache-Control/ETag are dropped here (unlike the 200/206
+                    # branches below): a shared cache keys on URI+method, not
+                    # Range, so an explicitly cacheable 416 could be served
+                    # back for a later plain GET and make the object look
+                    # broken for an hour.
                     file_handle.close()
-                    headers["Content-Range"] = f"bytes */{file_size}"
+                    error_headers = {k: v for k, v in headers.items()
+                                      if k not in ("Cache-Control", "ETag")}
+                    error_headers["Content-Range"] = f"bytes */{file_size}"
                     return Response(
                         status_code=416,
-                        headers=headers
+                        headers=error_headers
                     )
 
                 start, end = range_result
@@ -294,19 +299,6 @@ class FileProxyClient(ProxyClient):
             headers=handle.headers,
             media_type=handle.media_type
         )
-
-    @override
-    async def get_object(self, key: str, range_header: str = None):
-        """Convenience method that combines open_object() and stream_object()."""
-        result = await self.open_object(key, range_header)
-        if isinstance(result, FileObjectHandle):
-            try:
-                return self.stream_object(result)
-            except Exception:
-                # Ensure file is closed if stream_object fails
-                result.close()
-                raise
-        return result  # Error response
 
 
     @override
@@ -403,15 +395,13 @@ class FileProxyClient(ProxyClient):
                         stats = os.stat(file_path)
                         file_size = stats.st_size
 
-                        etag = STATIC_ETAG
-                        if self.calculate_etags:
-                            # This is VERY slow because it needs to read every file
-                            etag = f'"{calc_etag(file_path, 8388608)}"'
-
                         contents.append({
                             'Key': key,
                             'Size': str(file_size),
-                            'ETag': etag,
+                            # Same validator head_object/open_object return, so a
+                            # client can revalidate what it found here and get a
+                            # 304. Free: the stat above already has both fields.
+                            'ETag': make_file_etag(stats.st_mtime, file_size),
                             'LastModified': format_timestamp_s3(stats.st_mtime),
                             'StorageClass': 'STANDARD'
                         })

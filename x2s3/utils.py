@@ -3,6 +3,7 @@ import secrets
 import urllib
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from email.utils import formatdate, parsedate_to_datetime
 from mimetypes import guess_type
 from html import escape
 
@@ -252,3 +253,141 @@ def guess_content_type(filename):
             return 'text/plain+yaml'
         else:
             return 'application/octet-stream'
+
+
+# Zarr chunks are effectively immutable by path, but datasets are sometimes
+# overwritten in place, so one hour is the worst-case staleness we accept in
+# exchange for stopping sub-second chunk re-fetch storms. No `immutable`.
+CACHE_CONTROL_PUBLIC = "public, max-age=3600"
+
+
+def make_file_etag(mtime: float, size: int) -> str:
+    """Strong ETag for a file, derived from its mtime and size.
+
+    Same scheme as fileglancer's make_etag, so the two repos agree on the
+    validator for the same file.
+
+    ponytail: mtime granularity is the ceiling — two writes within the
+    filesystem's mtime resolution that also keep the same size would share an
+    ETag. Switch to a content hash if that ever matters.
+
+    The "-" separator is load-bearing, not cosmetic: the AWS Java SDK v1
+    skips its MD5 integrity check whenever `eTag.contains("-")`, on the
+    assumption that a hyphen means a multipart-upload ETag (which isn't an
+    MD5 of the body). That skip is the only reason handing out an ETag here
+    doesn't reintroduce the "Unable to verify integrity of data download"
+    failure that tests/java/.../S3v1IntegrityTest.java exists to reproduce,
+    and that `proxy_etag=False` defaults exist to avoid. Changing the
+    separator to `_` or `:` would make the SDK run the MD5 check again and
+    fail it, breaking Fiji/N5 Viewer.
+    """
+    return f'"{mtime:.6f}-{size}"'
+
+
+def format_http_date(timestamp) -> str:
+    """Format a POSIX timestamp as an RFC 7231 HTTP-date.
+
+    Distinct from format_timestamp_s3, which produces the ISO form S3 uses in
+    listing XML bodies. Headers must use this one or caches cannot read them.
+    """
+    return formatdate(timestamp, usegmt=True)
+
+
+def _split_etags(if_none_match: str):
+    """Split an If-None-Match header into its entity-tags.
+
+    Not a plain split(','): a quoted entity-tag may contain a comma of its own
+    (RFC 9110 8.8.3), and cutting one in half means it can never match, so the
+    client revalidates forever and always gets a full body back. Tags are kept
+    quoted because that is how they are compared.
+    """
+    tags, current, quoted = [], [], False
+    for char in if_none_match:
+        if char == '"':
+            quoted = not quoted
+            current.append(char)
+        elif char == ',' and not quoted:
+            tags.append(''.join(current))
+            current = []
+        else:
+            current.append(char)
+    tags.append(''.join(current))
+    return [tag.strip() for tag in tags if tag.strip()]
+
+
+def _etag_matches(if_none_match: str, etag: str) -> bool:
+    """True if any entity-tag in an If-None-Match header matches ours."""
+    for candidate in _split_etags(if_none_match):
+        candidate = candidate.strip()
+        if candidate == '*':
+            # '*' matches any existing representation (RFC 9110 13.1.2),
+            # even one carrying no ETag — the guard below must not run first.
+            return True
+        if not etag:
+            continue
+        if candidate.startswith('W/'):
+            candidate = candidate[2:]
+        if candidate == etag:
+            return True
+    return False
+
+
+def if_range_matches(if_range: str, response_headers) -> bool:
+    """True if an If-Range validator exactly matches ETag or Last-Modified.
+
+    response_headers may be a plain dict with canonical capitalization (see
+    check_not_modified above), so lookups here are lowercased explicitly.
+
+    Unlike If-None-Match, If-Range carries exactly one validator, never a
+    comma-separated list, and a weak ETag (W/"...") is never a valid match
+    (RFC 9110 13.1.5). So this is just two exact string comparisons: against
+    ETag, then against Last-Modified.
+    """
+    lowered = {k.lower(): v for k, v in response_headers.items()}
+    etag = lowered.get('etag')
+    last_modified = lowered.get('last-modified')
+    if etag is not None and if_range == etag:
+        return True
+    if last_modified is not None and if_range == last_modified:
+        return True
+    return False
+
+
+def check_not_modified(request_headers, response_headers):
+    """Return a 304 response if the request's validators match, else None.
+
+    request_headers is a case-insensitive mapping (Starlette Headers).
+    response_headers may be a plain dict with canonical capitalization, which
+    is what Fileglancer receives back from its user worker, so lookups here are
+    lowercased explicitly.
+    """
+    lowered = {k.lower(): v for k, v in response_headers.items()}
+    etag = lowered.get('etag')
+    last_modified = lowered.get('last-modified')
+
+    if_none_match = request_headers.get('if-none-match')
+    if if_none_match is not None:
+        # If-None-Match wins outright: when it is present and does not match,
+        # If-Modified-Since must not be consulted (RFC 9110 13.1.3).
+        if not _etag_matches(if_none_match, etag):
+            return None
+    else:
+        if_modified_since = request_headers.get('if-modified-since')
+        if not if_modified_since or not last_modified:
+            return None
+        try:
+            since = parsedate_to_datetime(if_modified_since)
+            modified = parsedate_to_datetime(last_modified)
+            if since is None or modified is None or modified > since:
+                return None
+        except (TypeError, ValueError):
+            # parsedate_to_datetime returns a NAIVE datetime for a date with no
+            # zone, which clients do send. Comparing it to our aware one raises
+            # TypeError, so the comparison has to sit inside the guard or a
+            # slightly-off header becomes a 500.
+            return None
+
+    headers = {name: lowered[name.lower()]
+               for name in ('ETag', 'Last-Modified', 'Cache-Control')
+               if lowered.get(name.lower())}
+    return Response(status_code=304, headers=headers)

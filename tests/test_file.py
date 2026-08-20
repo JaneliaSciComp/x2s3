@@ -5,7 +5,6 @@ from fastapi.testclient import TestClient
 from pydantic import HttpUrl
 
 from x2s3.app import create_app
-from x2s3.client_file import STATIC_ETAG
 from x2s3.settings import Target, Settings
 from x2s3.utils import parse_xml
 
@@ -18,14 +17,6 @@ def get_settings():
             name='local-files',
             client='file',
             options={'path':'.'}
-        ),
-        Target(
-            name='local-files-with-etags',
-            client='file',
-            options={
-                'path':'.',
-                'calculate_etags':'true'
-            }
         ),
         Target(
             name='hidden-files',
@@ -79,21 +70,8 @@ def test_list_objects(app):
         for content in contents:
             etag = content.find('ETag').text
             assert etag.startswith('"')
-            assert etag==STATIC_ETAG
-
-
-def test_list_objects_with_etags(app):
-    with TestClient(app) as client:
-        bucket_name = 'local-files-with-etags'
-        response = client.get(f"/{bucket_name}?list-type=2&prefix=tests/")
-        assert response.status_code == 200
-        root = parse_xml(response.text)
-        assert root.tag == "ListBucketResult"
-        assert root.find('Name').text == bucket_name
-        for content in root.findall('Contents'):
-            etag = content.find('ETag').text
-            assert etag.startswith('"')
-            assert etag!=STATIC_ETAG
+            # mtime-size, not a constant: see make_file_etag
+            assert etag != '"11111111111111111111111111111111"'
 
 
 def test_list_objects_delimiter(app):
@@ -271,3 +249,247 @@ def test_unbrowseable_head(app):
         assert response.status_code == 200
         response = client.head("/local-files/missing")
         assert response.status_code == 404
+
+
+def test_file_get_has_caching_headers(app):
+    with TestClient(app) as client:
+        response = client.get("/local-files/README.md")
+        assert response.status_code == 200
+        assert response.headers['cache-control'] == "public, max-age=3600"
+        assert response.headers['etag'].startswith('"')
+
+
+def test_file_head_has_caching_headers(app):
+    with TestClient(app) as client:
+        response = client.head("/local-files/README.md")
+        assert response.status_code == 200
+        assert response.headers['cache-control'] == "public, max-age=3600"
+        assert response.headers['etag'] == client.get("/local-files/README.md").headers['etag']
+
+
+def test_file_last_modified_is_http_date(app):
+    # The S3 ISO format is for listing XML; a header must be an HTTP-date or
+    # browsers and shared caches cannot use it.
+    from email.utils import parsedate_to_datetime
+    with TestClient(app) as client:
+        response = client.head("/local-files/README.md")
+        assert response.headers['last-modified'].endswith("GMT")
+        assert parsedate_to_datetime(response.headers['last-modified']) is not None
+
+
+def test_file_ranged_response_has_caching_headers(app):
+    with TestClient(app) as client:
+        response = client.get("/local-files/README.md", headers={"Range": "bytes=0-9"})
+        assert response.status_code == 206
+        assert response.headers['cache-control'] == "public, max-age=3600"
+        assert response.headers['etag'].startswith('"')
+
+
+def test_listing_keeps_s3_iso_timestamps(app):
+    # Only the header format changes; the XML body still speaks S3.
+    with TestClient(app) as client:
+        response = client.get("/local-files?list-type=2&prefix=tests/&max-keys=1")
+        root = parse_xml(response.text)
+        last_modified = root.find('Contents').find('LastModified').text
+        assert last_modified.endswith("Z")
+        assert "GMT" not in last_modified
+
+
+def test_get_returns_304_for_matching_etag(app):
+    with TestClient(app) as client:
+        first = client.get("/local-files/README.md")
+        assert first.status_code == 200
+        second = client.get("/local-files/README.md",
+                            headers={"If-None-Match": first.headers['etag']})
+        assert second.status_code == 304
+        assert second.content == b""
+        assert second.headers['cache-control'] == "public, max-age=3600"
+
+
+def test_get_returns_200_for_stale_etag(app):
+    with TestClient(app) as client:
+        response = client.get("/local-files/README.md",
+                              headers={"If-None-Match": '"stale-1"'})
+        assert response.status_code == 200
+        assert response.content
+
+
+def test_get_returns_304_for_if_modified_since(app):
+    with TestClient(app) as client:
+        first = client.get("/local-files/README.md")
+        second = client.get("/local-files/README.md",
+                            headers={"If-Modified-Since": first.headers['last-modified']})
+        assert second.status_code == 304
+
+
+def test_if_none_match_beats_range(app):
+    # RFC 9110 13.1.3: a matching If-None-Match wins over Range, so this is a
+    # 304 rather than a 206.
+    with TestClient(app) as client:
+        first = client.get("/local-files/README.md")
+        second = client.get("/local-files/README.md",
+                            headers={"If-None-Match": first.headers['etag'],
+                                     "Range": "bytes=0-9"})
+        assert second.status_code == 304
+
+
+def test_head_returns_304_for_matching_etag(app):
+    with TestClient(app) as client:
+        first = client.head("/local-files/README.md")
+        second = client.head("/local-files/README.md",
+                             headers={"If-None-Match": first.headers['etag']})
+        assert second.status_code == 304
+
+
+def test_304_does_not_leak_file_handles(app, monkeypatch):
+    # The handle is opened before the validator check, so the 304 path has to
+    # close it explicitly. Neither a ResourceWarning trap nor an open-fd count
+    # can observe this reliably: CPython's refcounting deallocates the
+    # underlying file object (running its own closing finalizer) the instant
+    # the local `handle` variable in get_object_or_denied goes out of scope,
+    # before either detector gets a chance to look. So this spies directly on
+    # FileObjectHandle.close() to confirm the 304 path actually calls it.
+    from x2s3.client_file import FileObjectHandle
+
+    calls = []
+    original_close = FileObjectHandle.close
+
+    def spy_close(self):
+        calls.append(self)
+        original_close(self)
+
+    monkeypatch.setattr(FileObjectHandle, "close", spy_close)
+
+    with TestClient(app) as client:
+        # The initial 200 GET streams its own handle closed when the response
+        # finishes, which also calls close() — so only count closes seen
+        # during the 304 loop below, not this warm-up call.
+        etag = client.get("/local-files/README.md").headers['etag']
+        before = len(calls)
+        for _ in range(3):
+            assert client.get("/local-files/README.md",
+                              headers={"If-None-Match": etag}).status_code == 304
+
+    assert len(calls) - before == 3
+
+
+def test_304_not_returned_for_missing_key(app):
+    with TestClient(app) as client:
+        response = client.get("/local-files/does-not-exist.txt",
+                              headers={"If-None-Match": "*"})
+        assert response.status_code == 404
+
+
+def test_416_response_is_not_cacheable(app):
+    # An explicitly cacheable 416 could be replayed by a shared cache for a
+    # later plain GET (caches key on URI+method, not Range), making the
+    # object look permanently broken.
+    with TestClient(app) as client:
+        response = client.get("/local-files/README.md",
+                              headers={"Range": "bytes=99999999-100000000"})
+        assert response.status_code == 416
+        assert 'cache-control' not in response.headers
+        assert 'etag' not in response.headers
+
+
+def test_if_none_match_beats_unsatisfiable_range(app):
+    # RFC 9110 13.2.2 evaluates If-None-Match before Range, so a matching
+    # validator yields 304 even when the Range is unsatisfiable.
+    with TestClient(app) as client:
+        first = client.get("/local-files/README.md")
+        second = client.get("/local-files/README.md",
+                            headers={"If-None-Match": first.headers['etag'],
+                                     "Range": "bytes=99999999-100000000"})
+        assert second.status_code == 304
+
+
+def test_if_range_stale_with_unsatisfiable_range_returns_full_body(app):
+    # RFC 9110 13.1.5: a stale If-Range means the Range is ignored entirely,
+    # including one that would otherwise be unsatisfiable.
+    with TestClient(app) as client:
+        full = client.get("/local-files/README.md")
+        response = client.get("/local-files/README.md",
+                              headers={"Range": "bytes=99999999-100000000",
+                                       "If-Range": '"stale-etag"'})
+        assert response.status_code == 200
+        assert response.content == full.content
+
+
+def test_unsatisfiable_range_with_fresh_if_range_still_416(app):
+    with TestClient(app) as client:
+        full = client.get("/local-files/README.md")
+        response = client.get("/local-files/README.md",
+                              headers={"Range": "bytes=99999999-100000000",
+                                       "If-Range": full.headers['etag']})
+        assert response.status_code == 416
+
+
+def test_unsatisfiable_range_with_stale_if_none_match_still_416(app):
+    with TestClient(app) as client:
+        response = client.get("/local-files/README.md",
+                              headers={"Range": "bytes=99999999-100000000",
+                                       "If-None-Match": '"stale-1"'})
+        assert response.status_code == 416
+
+
+def test_if_range_matching_etag_returns_ranged_body(app):
+    with TestClient(app) as client:
+        full = client.get("/local-files/README.md")
+        response = client.get("/local-files/README.md",
+                              headers={"Range": "bytes=0-9",
+                                       "If-Range": full.headers['etag']})
+        assert response.status_code == 206
+        assert response.content == full.content[:10]
+
+
+def test_if_range_stale_etag_returns_full_body(app):
+    with TestClient(app) as client:
+        full = client.get("/local-files/README.md")
+        response = client.get("/local-files/README.md",
+                              headers={"Range": "bytes=0-9",
+                                       "If-Range": '"stale-etag"'})
+        assert response.status_code == 200
+        assert response.content == full.content
+
+
+def test_if_range_without_range_is_ignored(app):
+    with TestClient(app) as client:
+        full = client.get("/local-files/README.md")
+        response = client.get("/local-files/README.md",
+                              headers={"If-Range": '"stale-etag"'})
+        assert response.status_code == 200
+        assert response.content == full.content
+
+
+def test_if_range_matching_last_modified_returns_ranged_body(app):
+    with TestClient(app) as client:
+        full = client.get("/local-files/README.md")
+        response = client.get("/local-files/README.md",
+                              headers={"Range": "bytes=0-9",
+                                       "If-Range": full.headers['last-modified']})
+        assert response.status_code == 206
+        assert response.content == full.content[:10]
+
+
+def test_head_and_get_agree_on_caching_headers(app):
+    # The validators are built separately in head_object and open_object. If
+    # they ever drift, a client revalidating against the pair gets a full body
+    # forever, and nothing else in the suite would notice.
+    with TestClient(app) as client:
+        head = client.head("/local-files/README.md")
+        get = client.get("/local-files/README.md")
+        for header in ("etag", "last-modified", "cache-control"):
+            assert head.headers[header] == get.headers[header], header
+
+
+def test_listing_etag_matches_get_etag(app):
+    # A client that caches an object it found in a listing must be able to
+    # revalidate with that listing's ETag. A constant ETag guaranteed a miss.
+    with TestClient(app) as client:
+        listing = client.get("/local-files?list-type=2&prefix=tests/&max-keys=1")
+        entry = parse_xml(listing.text).find('Contents')
+        key, listed = entry.find('Key').text, entry.find('ETag').text
+
+        assert client.get(f"/local-files/{key}").headers['etag'] == listed
+        assert client.get(f"/local-files/{key}",
+                          headers={"If-None-Match": listed}).status_code == 304
