@@ -171,7 +171,9 @@ class AiobotoProxyClient(ProxyClient):
                 "Content-Length": str(s3_res.get("ContentLength")),
                 # format_http_date, not strftime: %a/%b are locale-dependent
                 "Last-Modified": format_http_date(s3_res.get("LastModified").timestamp()),
-                "Cache-Control": CACHE_CONTROL_PUBLIC,
+                # Our default only applies to objects carrying no policy of
+                # their own (see open_object)
+                "Cache-Control": s3_res.get("CacheControl") or CACHE_CONTROL_PUBLIC,
             }
 
             if self.proxy_etag:
@@ -235,6 +237,13 @@ class AiobotoProxyClient(ProxyClient):
 
             if "last-modified" in res_headers:
                 headers["Last-Modified"] = res_headers["last-modified"]
+
+            if "cache-control" in res_headers:
+                # The origin's policy wins over our default. Re-advertising a
+                # no-store or private object as publicly cacheable for an hour
+                # would let browsers and the shared nginx cache in front of
+                # x2s3 hold on to content the origin said not to store.
+                headers["Cache-Control"] = res_headers["cache-control"]
 
             if self.proxy_etag and "etag" in res_headers:
                 headers["ETag"] = res_headers["etag"]
