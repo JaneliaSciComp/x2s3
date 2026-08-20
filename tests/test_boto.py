@@ -178,13 +178,16 @@ def test_get_object_precedence(app, s3_client):
 class _StubS3:
     """Minimal stand-in for the aiobotocore client, recording its calls."""
 
-    def __init__(self, get_headers=None, head_response=None):
+    def __init__(self, get_headers=None, head_response=None, get_error=None):
         self.get_headers = get_headers or {}
         self.head_response = head_response or {}
+        self.get_error = get_error
         self.calls = []
 
     async def get_object(self, **kwargs):
         self.calls.append(kwargs)
+        if self.get_error is not None:
+            raise self.get_error
         return {"ResponseMetadata": {"HTTPHeaders": self.get_headers},
                 "Body": None}
 
@@ -253,3 +256,73 @@ def test_head_object_keeps_upstream_cache_control():
     })
     response = call_with_stub(stub, 'head_object', 'some/key.json')
     assert response.headers["cache-control"] == "private, max-age=60"
+
+
+NOT_MODIFIED_HEADERS = {"etag": '"upstream-etag"',
+                        "last-modified": "Fri, 26 Jul 2024 13:39:10 GMT"}
+
+
+def _not_modified_error():
+    """The ClientError real S3 raises for a conditional GET that matches."""
+    from botocore.exceptions import ClientError
+    return ClientError({"Error": {"Code": "304", "Message": "Not Modified"},
+                        "ResponseMetadata": {"HTTPStatusCode": 304,
+                                             "HTTPHeaders": NOT_MODIFIED_HEADERS}},
+                       "GetObject")
+
+
+def test_open_object_forwards_conditional_headers_to_s3():
+    # Without this the proxy fetches the whole object upstream and throws the
+    # body away to answer 304, so a client revalidating thousands of cached
+    # chunks costs nearly as much as never having cached them.
+    stub = _StubS3(get_headers={"content-length": "10"})
+    call_with_stub(stub, 'open_object', 'some/key.json', None,
+                   '"client-etag"', 'Fri, 26 Jul 2024 13:39:10 GMT')
+    assert stub.calls[0]["IfNoneMatch"] == '"client-etag"'
+    assert stub.calls[0]["IfModifiedSince"] == parsedate_to_datetime(
+        "Fri, 26 Jul 2024 13:39:10 GMT")
+
+
+def test_open_object_returns_304_when_s3_says_not_modified():
+    stub = _StubS3(get_error=_not_modified_error())
+    response = call_with_stub(stub, 'open_object', 'some/key.json', None,
+                              '"upstream-etag"', None)
+    assert response.status_code == 304
+    assert response.headers["last-modified"] == NOT_MODIFIED_HEADERS["last-modified"]
+    assert response.headers["cache-control"] == CACHE_CONTROL_PUBLIC
+
+
+def test_304_from_s3_carries_etag_only_when_proxied():
+    # proxy_etag=False exists to keep upstream ETags off the wire for backends
+    # whose ETags break the AWS SDK integrity check; a 304 must not leak one.
+    stub = _StubS3(get_error=_not_modified_error())
+    hidden = call_with_stub(stub, 'open_object', 'some/key.json', None,
+                            '"upstream-etag"', None)
+    assert "etag" not in hidden.headers
+
+    stub = _StubS3(get_error=_not_modified_error())
+    shown = call_with_stub(stub, 'open_object', 'some/key.json', None,
+                           '"upstream-etag"', None, proxy_etag=True)
+    assert shown.headers["etag"] == NOT_MODIFIED_HEADERS["etag"]
+
+
+def test_unparseable_if_modified_since_is_not_forwarded():
+    # botocore wants a datetime; handing it a garbage string would raise, so a
+    # slightly-off client header must not become a 500.
+    stub = _StubS3(get_headers={"content-length": "10"})
+    handle = call_with_stub(stub, 'open_object', 'some/key.json', None,
+                            None, 'not a date')
+    assert "IfModifiedSince" not in stub.calls[0]
+    assert handle.status_code == 200
+
+
+def test_conditional_get_returns_304_against_real_s3(app, s3_client):
+    # End-to-end through the running proxy: the ETag the client got back must
+    # be answerable with a 304 rather than a second full body.
+    bucket = 'janelia-data-examples-with-etag'
+    key = 'jrc_mus_lung_covid.n5/attributes.json'
+    etag = s3_client.get_object(Bucket=bucket, Key=key)['ETag']
+
+    with pytest.raises(s3_client.exceptions.ClientError) as exc_info:
+        s3_client.get_object(Bucket=bucket, Key=key, IfNoneMatch=etag)
+    assert exc_info.value.response['ResponseMetadata']['HTTPStatusCode'] == 304

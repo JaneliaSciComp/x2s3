@@ -399,6 +399,13 @@ def create_app(settings):
                 return handle
             return None
 
+        async def _open(key, range_header):
+            """open_object with this request's conditional headers attached."""
+            return await client.open_object(
+                key, range_header,
+                request.headers.get("if-none-match"),
+                request.headers.get("if-modified-since"))
+
         async def get_object_or_denied(key):
             """GetObject with S3-style 404 masking: on unbrowseable buckets a
             missing key returns 403 AccessDenied so clients can't probe which
@@ -408,11 +415,11 @@ def create_app(settings):
             then either answers 304 or streams. The handle is closed on the
             304 path — nothing else will.
 
-            ponytail: for S3 targets this means an upstream fetch is opened and
-            abandoned on a 304. Forward IfNoneMatch into client_aioboto if S3
-            targets ever become a hot path.
+            Backends that evaluate the conditional headers themselves return
+            a 304 straight out of _open with no body transferred; the
+            check_not_modified call below covers the ones that don't.
             """
-            handle = await client.open_object(key, request.headers.get("range"))
+            handle = await _open(key, request.headers.get("range"))
             denied = _handle_or_denied(handle)
             if denied is not None and denied.status_code != 416:
                 return denied
@@ -429,7 +436,7 @@ def create_app(settings):
                         and "if-none-match" not in request.headers \
                         and "if-modified-since" not in request.headers:
                     return denied
-                handle = await client.open_object(key, None)
+                handle = await _open(key, None)
                 full_denied = _handle_or_denied(handle)
                 if full_denied is not None:
                     return full_denied
@@ -449,7 +456,7 @@ def create_app(settings):
                 # file that's since been overwritten would silently stitch
                 # bytes from two versions into one corrupt chunk.
                 handle.close()
-                handle = await client.open_object(key, None)
+                handle = await _open(key, None)
                 denied = _handle_or_denied(handle)
                 if denied is not None:
                     return denied

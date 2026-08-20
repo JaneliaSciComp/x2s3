@@ -32,15 +32,23 @@ class ProxyClient:
         https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html
         """
 
-    async def open_object(self, key: str, range_header: str = None):
+    async def open_object(self, key: str, range_header: str = None,
+                          if_none_match: str = None,
+                          if_modified_since: str = None):
         """
         Open an object and return a handle for streaming.
 
         This performs the file/storage operation and returns an ObjectHandle
         containing metadata and a reference to the content, or an error Response.
 
+        The conditional headers are passed through so that backends which can
+        evaluate them remotely may answer 304 without transferring a body.
+        Doing so is optional: the dispatcher re-checks the validators against
+        the returned handle, so a client that ignores them is still correct,
+        just more expensive.
+
         Returns:
-            ObjectHandle on success, or Response on error
+            ObjectHandle on success, or Response on error (including 304)
         """
 
     def stream_object(self, handle: ObjectHandle):

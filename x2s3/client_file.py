@@ -212,8 +212,15 @@ class FileProxyClient(ProxyClient):
 
 
     @override
-    async def open_object(self, key: str, range_header: str = None):
-        """Open a file object and return a handle for streaming."""
+    async def open_object(self, key: str, range_header: str = None,
+                          if_none_match: str = None,
+                          if_modified_since: str = None):
+        """Open a file object and return a handle for streaming.
+
+        The conditional arguments are accepted for interface parity and
+        ignored: opening a local file is an open plus an fstat, so there is
+        nothing to save by evaluating them here rather than in the dispatcher.
+        """
         file_handle = None
         try:
             path = self._safe_path(key)
