@@ -293,9 +293,31 @@ def format_http_date(timestamp) -> str:
     return formatdate(timestamp, usegmt=True)
 
 
+def _split_etags(if_none_match: str):
+    """Split an If-None-Match header into its entity-tags.
+
+    Not a plain split(','): a quoted entity-tag may contain a comma of its own
+    (RFC 9110 8.8.3), and cutting one in half means it can never match, so the
+    client revalidates forever and always gets a full body back. Tags are kept
+    quoted because that is how they are compared.
+    """
+    tags, current, quoted = [], [], False
+    for char in if_none_match:
+        if char == '"':
+            quoted = not quoted
+            current.append(char)
+        elif char == ',' and not quoted:
+            tags.append(''.join(current))
+            current = []
+        else:
+            current.append(char)
+    tags.append(''.join(current))
+    return [tag.strip() for tag in tags if tag.strip()]
+
+
 def _etag_matches(if_none_match: str, etag: str) -> bool:
     """True if any entity-tag in an If-None-Match header matches ours."""
-    for candidate in if_none_match.split(','):
+    for candidate in _split_etags(if_none_match):
         candidate = candidate.strip()
         if candidate == '*':
             # '*' matches any existing representation (RFC 9110 13.1.2),

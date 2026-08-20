@@ -136,3 +136,24 @@ def test_star_if_none_match_matches_even_without_etag():
     response = check_not_modified({"if-none-match": "*"},
                                   {"Last-Modified": LAST_MODIFIED})
     assert response is not None and response.status_code == 304
+
+
+def test_etag_containing_a_comma_still_matches():
+    # RFC 9110 8.8.3 lets a quoted entity-tag contain a comma, so If-None-Match
+    # cannot be split on bare commas without cutting one in half.
+    etag = '"abc,def"'
+    headers = {"ETag": etag, "Last-Modified": LAST_MODIFIED}
+    assert check_not_modified({"if-none-match": etag}, headers) is not None
+
+
+def test_comma_etag_in_a_list_still_matches():
+    etag = '"abc,def"'
+    headers = {"ETag": etag, "Last-Modified": LAST_MODIFIED}
+    assert check_not_modified({"if-none-match": f'"other", {etag}'}, headers) is not None
+
+
+def test_unquoted_etag_still_matches():
+    # Guard: a quote-only parser would stop matching backends that emit
+    # unquoted ETags, which are likelier in the wild than comma-bearing ones.
+    headers = {"ETag": "abc123", "Last-Modified": LAST_MODIFIED}
+    assert check_not_modified({"if-none-match": "abc123"}, headers) is not None
