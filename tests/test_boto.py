@@ -326,3 +326,14 @@ def test_conditional_get_returns_304_against_real_s3(app, s3_client):
     with pytest.raises(s3_client.exceptions.ClientError) as exc_info:
         s3_client.get_object(Bucket=bucket, Key=key, IfNoneMatch=etag)
     assert exc_info.value.response['ResponseMetadata']['HTTPStatusCode'] == 304
+
+
+def test_head_and_get_agree_on_caching_headers_over_s3(app, s3_client):
+    # Same invariant as the file client, across the other pair of code paths.
+    bucket = 'janelia-data-examples-with-etag'
+    key = 'jrc_mus_lung_covid.n5/attributes.json'
+    head = s3_client.head_object(Bucket=bucket, Key=key)
+    get = s3_client.get_object(Bucket=bucket, Key=key)
+    assert head['ETag'] == get['ETag']
+    assert head['LastModified'] == get['LastModified']
+    assert head.get('CacheControl') == get.get('CacheControl')

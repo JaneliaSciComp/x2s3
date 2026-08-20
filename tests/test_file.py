@@ -491,3 +491,14 @@ def test_if_range_matching_last_modified_returns_ranged_body(app):
                                        "If-Range": full.headers['last-modified']})
         assert response.status_code == 206
         assert response.content == full.content[:10]
+
+
+def test_head_and_get_agree_on_caching_headers(app):
+    # The validators are built separately in head_object and open_object. If
+    # they ever drift, a client revalidating against the pair gets a full body
+    # forever, and nothing else in the suite would notice.
+    with TestClient(app) as client:
+        head = client.head("/local-files/README.md")
+        get = client.get("/local-files/README.md")
+        for header in ("etag", "last-modified", "cache-control"):
+            assert head.headers[header] == get.headers[header], header
