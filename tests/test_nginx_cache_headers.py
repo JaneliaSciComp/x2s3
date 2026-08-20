@@ -163,3 +163,14 @@ def test_cache_revalidation_uses_nginx_own_validator(nginx):
             return
         time.sleep(0.25)
     pytest.fail("cache entry never expired, so revalidation was never exercised")
+
+
+def test_no_cache_request_bypasses_the_cache(nginx):
+    # nginx.conf maps Cache-Control: no-cache to a cache bypass, but a
+    # location-level proxy_cache_bypass replaces the http-level one rather than
+    # adding to it, so including proxy_cache.conf silently dropped that policy.
+    status, _ = request_through_nginx(nginx, "/no-cache-probe")
+    assert status == "MISS"
+    status, _ = request_through_nginx(nginx, "/no-cache-probe",
+                                      **{"Cache-Control": "no-cache"})
+    assert status == "BYPASS"
