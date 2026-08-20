@@ -62,14 +62,6 @@ class ProxyClient:
             StreamingResponse that streams the object content
         """
 
-    async def get_object(self, key: str, range_header: str = None):
-        """
-        Basic interface for AWS S3's GetObject API.
-        https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
-
-        This is a convenience method that combines open_object() and stream_object().
-        """
-
     async def list_objects_v2(self,
                             continuation_token: str,
                             delimiter: str,

@@ -321,20 +321,6 @@ class AiobotoProxyClient(ProxyClient):
         )
 
     @override
-    async def get_object(self, key: str, range_header: str = None):
-        """Convenience method that combines open_object() and stream_object()."""
-        result = await self.open_object(key, range_header)
-        if isinstance(result, S3ObjectHandle):
-            try:
-                return self.stream_object(result)
-            except Exception:
-                # Ensure body is closed if stream_object fails
-                result.close()
-                raise
-        return result  # Error response
-
-
-    @override
     async def list_objects_v2(self,
                             continuation_token: str,
                             delimiter: str,
