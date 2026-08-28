@@ -19,16 +19,20 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from x2s3.utils import *
 from x2s3 import client_registry
+from x2s3.log import AccessLogMiddleware, configure_logging, disable_uvicorn_access_log
 from x2s3.settings import get_settings, Target
 
 # Use uvloop for better async performance
+# Reported from the lifespan rather than here: at import time no sink is
+# configured yet, so in JSON mode this would be the one plain-text line on the
+# stream.
 try:
     import uvloop
     import asyncio
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-    logger.info("uvloop event loop policy installed")
+    _UVLOOP_STATUS = ("info", "uvloop event loop policy installed")
 except ImportError:
-    logger.warning("uvloop not available, using default asyncio event loop")
+    _UVLOOP_STATUS = ("warning", "uvloop not available, using default asyncio event loop")
 
 class RequestIdMiddleware:
     """Pure ASGI middleware that attaches an S3-style x-amz-request-id header
@@ -59,7 +63,10 @@ class RequestIdMiddleware:
                 headers.append((b"x-amz-request-id", request_id.encode("latin-1")))
             await send(message)
 
-        await self.app(scope, receive, send_with_request_id)
+        # Bind it as ECS trace.id as well, so every line logged while serving
+        # this request can be grouped with its access log line in Kibana.
+        with logger.contextualize(**{"trace.id": request_id}):
+            await self.app(scope, receive, send_with_request_id)
 
 
 class PrivateNetworkAccessMiddleware:
@@ -123,8 +130,8 @@ def create_app(settings):
             app.settings = settings
 
         # Configure logging
-        logger.remove()
-        logger.add(sys.stderr, level=app.settings.log_level)
+        configure_logging(app.settings.log_level, app.settings.log_format)
+        logger.log(_UVLOOP_STATUS[0].upper(), _UVLOOP_STATUS[1])
 
         logger.trace("Available protocols:")
         for proto in client_registry.available_protocols():
@@ -193,6 +200,10 @@ def create_app(settings):
     # Echo Access-Control-Allow-Private-Network on PNA preflights. Added after
     # (i.e. outside) CORSMiddleware so it wraps the preflight response CORS emits.
     app.add_middleware(PrivateNetworkAccessMiddleware)
+    # Added last, so it is the outermost layer and times the whole request,
+    # including responses produced by the CORS and PNA middlewares.
+    app.add_middleware(AccessLogMiddleware)
+    disable_uvicorn_access_log()
     app.mount("/static", StaticFiles(directory="static"), name="static")
     templates = Jinja2Templates(directory="templates")
 
@@ -247,6 +258,9 @@ def create_app(settings):
                 target_name, target_path = None, ''
 
         logger.trace(f"target_name={target_name}, target_path={target_path}, is_virtual={is_virtual}")
+        # Leave it where AccessLogMiddleware can pick it up once the response
+        # is done; it is the dimension worth slicing latency by.
+        request.scope.setdefault("state", {})["target_name"] = target_name
         return target_name, target_path, is_virtual
 
 

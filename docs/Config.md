@@ -3,6 +3,7 @@
 The `config.yaml` file configures the service. You can specify the following properties:
 
 * `log_level`: The logging level (ERROR, WARNING, INFO, DEBUG, TRACE)
+* `log_format`: `text` (default) for human-readable logs, or `json` for structured logs (see [Structured Logging](StructuredLogging.md))
 * `ui`: By default, the root shows an HTML UI listing of the buckets, with navigation. This disables the UI and restores the [ListBuckets](https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBuckets.html) functionality at the root.
 * `virtual_buckets`: If true, then the buckets can be browsed like subdomains of the base URL, like 'https://bucketname.yourdomain.org'. This requires wildcard SSL certificates and additional configuration at the Nginx level, and requires that the `base_url` is set.
 * `base_url`: The base URL for your service. Only needed when using `virtual_buckets`.
