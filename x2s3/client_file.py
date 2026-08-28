@@ -370,7 +370,13 @@ class FileProxyClient(ProxyClient):
 
             real_prefix, virtual_common = self._map_prefix(prefix, delimiter)
             if virtual_common is not None:
-                common_prefixes = [virtual_common]
+                # One virtual path segment is the whole listing, so there is
+                # nothing to page through: max-keys=0 asks for nothing, and a
+                # continuation token can only be stale here, since this branch
+                # never reports one and is never truncated. walk_path does the
+                # same with a token it cannot match.
+                if max_keys != 0 and not continuation_token:
+                    common_prefixes = [virtual_common]
             elif real_prefix is not None:
 
                 # ensure the prefix ends with a slash

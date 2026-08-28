@@ -71,8 +71,11 @@ def parse_xml(xml):
 
 def url_encode(s):
     if not s: return None
-    # AWS does something slightly strange here, maybe like this?
-    return urllib.parse.quote(s, safe='/ ').replace(' ','+')
+    # EncodingType=url means percent-encoding, so a space is %20 and not '+':
+    # that is what clients undo, whether they unquote (boto3) or call
+    # decodeURIComponent (Neuroglancer). '/' is left alone so that keys keep
+    # their structure.
+    return urllib.parse.quote(s, safe='/')
 
 
 S3_XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/"

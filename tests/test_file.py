@@ -314,6 +314,26 @@ def test_virtual_prefix_list_within_prefix(app):
             assert root.find('KeyCount').text == '1'
 
 
+def test_virtual_prefix_within_prefix_pagination(app):
+    # The synthetic entry has to obey max-keys and continuation tokens too,
+    # the same way a listing off the filesystem does
+    with TestClient(app) as client:
+        for query in ["prefix=abc&delimiter=/&max-keys=0",
+                      "prefix=abc123/&delimiter=/&max-keys=0",
+                      "prefix=abc&delimiter=/&continuation-token=stale",
+                      "prefix=abc123/&delimiter=/&continuation-token=stale"]:
+            response = client.get(f"/mounted-files?list-type=2&{query}")
+            assert response.status_code == 200
+            root = parse_xml(response.text)
+            assert root.findall('CommonPrefixes') == [], query
+            assert root.find('KeyCount').text == '0', query
+            assert root.find('IsTruncated').text == 'false', query
+
+        # Same request without either returns the entry
+        root = parse_xml(client.get("/mounted-files?list-type=2&prefix=abc&delimiter=/").text)
+        assert [cp.find('Prefix').text for cp in root.findall('CommonPrefixes')] == ['abc123/']
+
+
 def test_virtual_prefix_list_no_match(app):
     # Anything outside the virtual prefix matches nothing
     with TestClient(app) as client:
@@ -384,3 +404,31 @@ def test_list_objects_encoding_type_url(app):
             assert root.find('EncodingType').text == 'url'
             assert f"{prefix}test_file.py" in [c.find('Key').text for c in root.findall('Contents')]
             assert f"{prefix}java/" in [cp.find('Prefix').text for cp in root.findall('CommonPrefixes')]
+
+
+@pytest.fixture
+def spaced_app(tmp_path):
+    """An app over a tree whose names need encoding."""
+    (tmp_path / "sub dir").mkdir()
+    (tmp_path / "my file.txt").write_text("spaced")
+    settings = Settings()
+    settings.base_url = HttpUrl('http://testserver')
+    settings.targets = [
+        Target(name='spaced-files', client='file', options={'path': str(tmp_path)})
+    ]
+    return create_app(settings)
+
+
+def test_list_objects_encodes_spaces(spaced_app):
+    # A space is %20, not '+': a client that reads a key out of a listing and
+    # asks for it back has to reach the same file
+    with TestClient(spaced_app) as client:
+        response = client.get("/spaced-files?list-type=2&delimiter=/&encoding-type=url")
+        assert response.status_code == 200
+        root = parse_xml(response.text)
+        assert [c.find('Key').text for c in root.findall('Contents')] == ['my%20file.txt']
+        assert [cp.find('Prefix').text for cp in root.findall('CommonPrefixes')] == ['sub%20dir/']
+
+        response = client.get("/spaced-files/my%20file.txt")
+        assert response.status_code == 200
+        assert response.text == "spaced"
