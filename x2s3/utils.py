@@ -101,12 +101,15 @@ def get_bucket_list_xml(buckets):
     return elem_to_str(root)
 
 
-def get_list_xml(contents, common_prefixes, url_encode=True, **kwargs):
+def get_list_xml(contents, common_prefixes, encode_values=True, **kwargs):
     """ Creates S3-style XML elements for the given object listing.
+
+    `encode_values` must not be named `url_encode`: that shadowed the
+    url_encode() function this uses to honour EncodingType=url.
     """
 
     is_url_encode = False
-    if url_encode and 'EncodingType' in kwargs:
+    if encode_values and 'EncodingType' in kwargs:
         is_url_encode = kwargs['EncodingType']=='url'
 
     root = ET.Element("ListBucketResult", xmlns=S3_XMLNS)

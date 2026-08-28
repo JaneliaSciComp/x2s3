@@ -344,7 +344,7 @@ class AiobotoProxyClient(ProxyClient):
                 'StartAfter': start_after
             }
 
-            xml = get_list_xml(contents, common_prefixes, url_encode=False, **kwargs)
+            xml = get_list_xml(contents, common_prefixes, encode_values=False, **kwargs)
             return Response(content=xml, media_type="application/xml")
 
         except Exception as e:
