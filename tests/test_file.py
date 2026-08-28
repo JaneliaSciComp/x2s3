@@ -28,6 +28,14 @@ def get_settings():
             }
         ),
         Target(
+            name='mounted-files',
+            client='file',
+            options={
+                'path':'.',
+                'virtual_prefix':'abc123/my-data/'
+            }
+        ),
+        Target(
             name='hidden-files',
             browseable=False,
             client='file',
@@ -271,3 +279,92 @@ def test_unbrowseable_head(app):
         assert response.status_code == 200
         response = client.head("/local-files/missing")
         assert response.status_code == 404
+
+
+VIRTUAL_PREFIX = 'abc123/my-data/'
+
+
+def test_virtual_prefix_list(app):
+    # Keys are reported under the virtual prefix, which is not on disk
+    with TestClient(app) as client:
+        response = client.get(f"/mounted-files?list-type=2&prefix={VIRTUAL_PREFIX}tests/&delimiter=/")
+        assert response.status_code == 200
+        root = parse_xml(response.text)
+        assert root.find('Prefix').text == f"{VIRTUAL_PREFIX}tests/"
+        keys = [c.find('Key').text for c in root.findall('Contents')]
+        prefixes = [cp.find('Prefix').text for cp in root.findall('CommonPrefixes')]
+        assert keys and prefixes
+        assert f"{VIRTUAL_PREFIX}tests/test_file.py" in keys
+        assert f"{VIRTUAL_PREFIX}tests/java/" in prefixes
+        assert all(k.startswith(VIRTUAL_PREFIX) for k in keys + prefixes)
+
+
+def test_virtual_prefix_list_within_prefix(app):
+    # A prefix that stops inside the virtual prefix sees only the next segment
+    with TestClient(app) as client:
+        for prefix, expected in [('', 'abc123/'),
+                                 ('abc', 'abc123/'),
+                                 ('abc123/', VIRTUAL_PREFIX),
+                                 ('abc123/my-', VIRTUAL_PREFIX)]:
+            response = client.get(f"/mounted-files?list-type=2&prefix={prefix}&delimiter=/")
+            assert response.status_code == 200
+            root = parse_xml(response.text)
+            assert [cp.find('Prefix').text for cp in root.findall('CommonPrefixes')] == [expected]
+            assert root.findall('Contents') == []
+            assert root.find('KeyCount').text == '1'
+
+
+def test_virtual_prefix_list_no_match(app):
+    # Anything outside the virtual prefix matches nothing
+    with TestClient(app) as client:
+        for prefix in ['zzz/', 'abc123/other/', 'tests/']:
+            response = client.get(f"/mounted-files?list-type=2&prefix={prefix}&delimiter=/")
+            assert response.status_code == 200
+            root = parse_xml(response.text)
+            assert root.findall('Contents') == []
+            assert root.findall('CommonPrefixes') == []
+            assert root.find('KeyCount').text == '0'
+
+
+def test_virtual_prefix_list_recursive(app):
+    # Without a delimiter, a prefix inside the virtual prefix lists everything
+    with TestClient(app) as client:
+        response = client.get("/mounted-files?list-type=2&prefix=abc123/&max-keys=5")
+        assert response.status_code == 200
+        root = parse_xml(response.text)
+        keys = [c.find('Key').text for c in root.findall('Contents')]
+        assert len(keys) == 5
+        assert all(k.startswith(VIRTUAL_PREFIX) for k in keys)
+
+
+def test_virtual_prefix_objects(app):
+    with TestClient(app) as client:
+        response = client.get(f"/mounted-files/{VIRTUAL_PREFIX}README.md")
+        assert response.status_code == 200
+        assert 'x2s3' in response.text
+        assert client.head(f"/mounted-files/{VIRTUAL_PREFIX}README.md").status_code == 200
+        # The real path, without the virtual prefix, is not addressable
+        response = client.get("/mounted-files/README.md")
+        assert response.status_code == 404
+        assert parse_xml(response.text).find('Code').text == 'NoSuchKey'
+        assert client.head("/mounted-files/README.md").status_code == 404
+
+
+def test_virtual_prefix_continuation(app):
+    # Continuation tokens are reported and accepted in the client's key space
+    with TestClient(app) as client:
+        url = f"/mounted-files?list-type=2&prefix={VIRTUAL_PREFIX}x2s3/&delimiter=/"
+        root = parse_xml(client.get(url).text)
+        all_keys = [c.find('Key').text for c in root.findall('Contents')]
+        assert len(all_keys) > 3
+
+        paged, token = [], None
+        while True:
+            page_url = url + "&max-keys=2" + (f"&continuation-token={token}" if token else "")
+            root = parse_xml(client.get(page_url).text)
+            paged += [c.find('Key').text for c in root.findall('Contents')]
+            if root.find('IsTruncated').text != 'true':
+                break
+            token = root.find('NextContinuationToken').text
+            assert token.startswith(VIRTUAL_PREFIX)
+        assert paged == all_keys

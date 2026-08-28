@@ -167,6 +167,12 @@ class FileProxyClient(ProxyClient):
         self.root_path = str(Path(kwargs['path']).resolve())
         self.calculate_etags = kwargs.get('calculate_etags', False)
         self.buffer_size = kwargs.get('buffer_size', DEFAULT_BUFFER_SIZE)
+        # Optional virtual prefix. The target is mounted at this key prefix
+        # inside the bucket, even though the prefix does not exist on disk:
+        # keys are reported with it, and it is stripped from incoming keys.
+        # This is the inverse of the aioboto client's 'prefix' option, which
+        # hides a prefix that does exist upstream.
+        self.virtual_prefix = dir_path((kwargs.get('virtual_prefix') or '').lstrip('/'))
 
     def _safe_path(self, key: str) -> Optional[str]:
         """Resolve key to absolute path and validate it's within root_path.
@@ -181,10 +187,43 @@ class FileProxyClient(ProxyClient):
             return None
         return path
 
+    def _strip_virtual_prefix(self, key: str) -> Optional[str]:
+        """Remove the virtual prefix from an incoming key.
+
+        Returns None if the key does not fall under the virtual prefix.
+        """
+        if not self.virtual_prefix:
+            return key
+        if key and key.startswith(self.virtual_prefix):
+            return key[len(self.virtual_prefix):]
+        return None
+
+    def _map_prefix(self, prefix: str, delimiter: str):
+        """Map a requested key prefix into this target's own key space.
+
+        Returns (real_prefix, virtual_common_prefix). Exactly one is not None:
+        either a prefix to walk on disk, or a common prefix that exists only
+        within the virtual prefix. Both are None when nothing can match.
+        """
+        if not self.virtual_prefix or prefix.startswith(self.virtual_prefix):
+            return remove_prefix(self.virtual_prefix, prefix), None
+        if self.virtual_prefix.startswith(prefix):
+            # The prefix stops inside the virtual prefix, which has nothing on
+            # disk behind it. With a delimiter, all the client can see is the
+            # next virtual segment; without one, it sees the whole target.
+            i = self.virtual_prefix.find(delimiter, len(prefix)) if delimiter else -1
+            if i >= 0:
+                return None, self.virtual_prefix[:i + len(delimiter)]
+            return '', None
+        return None, None
+
     @override
     async def head_object(self, key: str):
         try:
-            path = self._safe_path(key)
+            real_key = self._strip_virtual_prefix(key)
+            if real_key is None:
+                return get_nosuchkey_response(key)
+            path = self._safe_path(real_key)
             if path is None:
                 return get_nosuchkey_response(key)
             if not os.path.isfile(path):
@@ -214,7 +253,10 @@ class FileProxyClient(ProxyClient):
         """Open a file object and return a handle for streaming."""
         file_handle = None
         try:
-            path = self._safe_path(key)
+            real_key = self._strip_virtual_prefix(key)
+            if real_key is None:
+                return get_nosuchkey_response(key)
+            path = self._safe_path(real_key)
             if path is None:
                 return get_nosuchkey_response(key)
             if not os.path.isfile(path):
@@ -319,39 +361,56 @@ class FileProxyClient(ProxyClient):
                             prefix: str,
                             start_after: str):
 
-        # prefix user-supplied prefix with configured prefix
-        real_prefix = prefix
-
-        # ensure the prefix ends with a slash
-        if real_prefix and not real_prefix.endswith('/'):
-            real_prefix += '/'
-
+        prefix = prefix or ''
         try:
-            path = str(self.root_path)
-            if real_prefix:
-                path = self._safe_path(real_prefix)
-                if path is None:
-                    # Path traversal attempt - return empty listing
-                    return Response(content=get_list_xml([], [], Name=self.target_name),
-                                    media_type="application/xml")
+            contents = []
+            common_prefixes = []
+            is_truncated = 'false'
+            next_token = None
 
-            logger.debug(f"root_path: {self.root_path}, real_prefix: {real_prefix}, path: {path}")
+            real_prefix, virtual_common = self._map_prefix(prefix, delimiter)
+            if virtual_common is not None:
+                common_prefixes = [virtual_common]
+            elif real_prefix is not None:
 
-            res = self.walk_path(path, continuation_token, delimiter, max_keys)
-            contents = res['contents']
-            is_truncated = res['is_truncated']
-            common_prefixes = sorted(res['common_prefixes'])
+                # ensure the prefix ends with a slash
+                if real_prefix and not real_prefix.endswith('/'):
+                    real_prefix += '/'
+
+                path = str(self.root_path)
+                if real_prefix:
+                    # None means a path traversal attempt, leaving the listing empty
+                    path = self._safe_path(real_prefix)
+
+                logger.debug(f"root_path: {self.root_path}, real_prefix: {real_prefix}, path: {path}")
+
+                if path is not None:
+                    res = self.walk_path(path,
+                                         remove_prefix(self.virtual_prefix, continuation_token),
+                                         delimiter, max_keys)
+                    contents = res['contents']
+                    common_prefixes = sorted(res['common_prefixes'])
+                    is_truncated = res['is_truncated']
+                    next_token = res['next_token']
+
+                    if self.virtual_prefix:
+                        # Report keys as the client sees them, under the prefix
+                        for obj in contents:
+                            obj['Key'] = self.virtual_prefix + obj['Key']
+                        common_prefixes = [self.virtual_prefix + cp for cp in common_prefixes]
+                        if next_token:
+                            next_token = self.virtual_prefix + next_token
 
             kwargs = {
                 'Name': self.target_name,
-                'Prefix': prefix or '',
+                'Prefix': prefix,
                 'Delimiter': delimiter,
                 'MaxKeys': max_keys,
                 'EncodingType': encoding_type,
                 'KeyCount': len(contents) + len(common_prefixes),
                 'IsTruncated': is_truncated,
                 'ContinuationToken': continuation_token,
-                'NextContinuationToken': res['next_token'],
+                'NextContinuationToken': next_token,
                 'StartAfter': start_after
             }
 
