@@ -42,6 +42,7 @@ Each target may have the following properties:
         * `path`: Path to the root
         * `buffer_size`: Size of chunks (in bytes) when streaming file content (default: 8192)
         * `calculate_etags`: If true, then the etags will be calculated by hashing the content of each file. This is much more expensive and may not be needed for all use cases.
+        * `virtual_prefix`: Mounts the target at this key prefix inside the bucket. The prefix does not exist on disk: keys are reported with it, and it is stripped from incoming keys. This is the inverse of the aioboto `prefix` option, which hides a prefix that does exist upstream. For example, `virtual_prefix: shared/my-data` exposes `<root>/README.md` as `shared/my-data/README.md`.
 
 ### Botocore Config Options
 
