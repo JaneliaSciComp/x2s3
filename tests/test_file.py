@@ -384,3 +384,31 @@ def test_list_objects_encoding_type_url(app):
             assert root.find('EncodingType').text == 'url'
             assert f"{prefix}test_file.py" in [c.find('Key').text for c in root.findall('Contents')]
             assert f"{prefix}java/" in [cp.find('Prefix').text for cp in root.findall('CommonPrefixes')]
+
+
+@pytest.fixture
+def spaced_app(tmp_path):
+    """An app over a tree whose names need encoding."""
+    (tmp_path / "sub dir").mkdir()
+    (tmp_path / "my file.txt").write_text("spaced")
+    settings = Settings()
+    settings.base_url = HttpUrl('http://testserver')
+    settings.targets = [
+        Target(name='spaced-files', client='file', options={'path': str(tmp_path)})
+    ]
+    return create_app(settings)
+
+
+def test_list_objects_encodes_spaces(spaced_app):
+    # A space is %20, not '+': a client that reads a key out of a listing and
+    # asks for it back has to reach the same file
+    with TestClient(spaced_app) as client:
+        response = client.get("/spaced-files?list-type=2&delimiter=/&encoding-type=url")
+        assert response.status_code == 200
+        root = parse_xml(response.text)
+        assert [c.find('Key').text for c in root.findall('Contents')] == ['my%20file.txt']
+        assert [cp.find('Prefix').text for cp in root.findall('CommonPrefixes')] == ['sub%20dir/']
+
+        response = client.get("/spaced-files/my%20file.txt")
+        assert response.status_code == 200
+        assert response.text == "spaced"
