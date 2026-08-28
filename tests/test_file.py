@@ -368,3 +368,19 @@ def test_virtual_prefix_continuation(app):
             token = root.find('NextContinuationToken').text
             assert token.startswith(VIRTUAL_PREFIX)
         assert paged == all_keys
+
+
+def test_list_objects_encoding_type_url(app):
+    # Clients such as Neuroglancer always ask for encoding-type=url, which used
+    # to raise a TypeError because the flag shadowed the encoding function
+    with TestClient(app) as client:
+        for bucket, prefix in [('local-files', 'tests/'),
+                               ('mounted-files', f'{VIRTUAL_PREFIX}tests/')]:
+            response = client.get(
+                f"/{bucket}?list-type=2&prefix={prefix}&delimiter=/&encoding-type=url")
+            assert response.status_code == 200
+            root = parse_xml(response.text)
+            assert root.find('Prefix').text == prefix
+            assert root.find('EncodingType').text == 'url'
+            assert f"{prefix}test_file.py" in [c.find('Key').text for c in root.findall('Contents')]
+            assert f"{prefix}java/" in [cp.find('Prefix').text for cp in root.findall('CommonPrefixes')]
