@@ -314,6 +314,26 @@ def test_virtual_prefix_list_within_prefix(app):
             assert root.find('KeyCount').text == '1'
 
 
+def test_virtual_prefix_within_prefix_pagination(app):
+    # The synthetic entry has to obey max-keys and continuation tokens too,
+    # the same way a listing off the filesystem does
+    with TestClient(app) as client:
+        for query in ["prefix=abc&delimiter=/&max-keys=0",
+                      "prefix=abc123/&delimiter=/&max-keys=0",
+                      "prefix=abc&delimiter=/&continuation-token=stale",
+                      "prefix=abc123/&delimiter=/&continuation-token=stale"]:
+            response = client.get(f"/mounted-files?list-type=2&{query}")
+            assert response.status_code == 200
+            root = parse_xml(response.text)
+            assert root.findall('CommonPrefixes') == [], query
+            assert root.find('KeyCount').text == '0', query
+            assert root.find('IsTruncated').text == 'false', query
+
+        # Same request without either returns the entry
+        root = parse_xml(client.get("/mounted-files?list-type=2&prefix=abc&delimiter=/").text)
+        assert [cp.find('Prefix').text for cp in root.findall('CommonPrefixes')] == ['abc123/']
+
+
 def test_virtual_prefix_list_no_match(app):
     # Anything outside the virtual prefix matches nothing
     with TestClient(app) as client:
