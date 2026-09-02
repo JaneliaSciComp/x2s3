@@ -183,6 +183,8 @@ def _log_request(scope, status: int, body_bytes: int, duration_s: float):
 
     state = scope.get("state") or {}
     target = state.get("target_name")
+    if target:
+        target = _log_safe(target)
     # Read from the scope rather than the bound context: this runs outside
     # RequestIdMiddleware's contextualize() block, which has already exited.
     request_id = state.get("request_id")
