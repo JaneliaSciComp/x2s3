@@ -178,13 +178,25 @@ def format_isoformat_as_local(isodate):
     return dt.strftime("%Y-%m-%d at %I:%M %p")
 
 
+def _xml_text(value):
+    """XML-escape a value for an error response, tolerating what isn't a string.
+
+    html.escape() only accepts strings, so a None reached it as an
+    AttributeError and turned a handled upstream error into an unhandled 500.
+    That happens for real: an S3 backend can answer with an empty <Resource/>,
+    which botocore parses to None, list_objects_v2 forwards its optional prefix
+    as the key, and HTTPException.detail is not required to be a string.
+    """
+    return escape('' if value is None else str(value))
+
+
 def get_nosuchkey_response(key):
     return Response(content=inspect.cleandoc(f"""
         <?xml version="1.0" encoding="UTF-8"?>
         <Error>
             <Code>NoSuchKey</Code>
             <Message>The specified key does not exist.</Message>
-            <Key>{escape(key)}</Key>
+            <Key>{_xml_text(key)}</Key>
         </Error>
         """), status_code=404, media_type="application/xml")
 
@@ -195,7 +207,7 @@ def get_nosuchbucket_response(bucket_name):
         <Error>
             <Code>NoSuchBucket</Code>
             <Message>The specified bucket does not exist</Message>
-            <BucketName>{escape(bucket_name)}</BucketName>
+            <BucketName>{_xml_text(bucket_name)}</BucketName>
         </Error>
         """), status_code=404, media_type="application/xml")
 
@@ -214,9 +226,9 @@ def get_error_response(status_code, error_code, message, resource):
     return Response(content=inspect.cleandoc(f"""
         <?xml version="1.0" encoding="UTF-8"?>
         <Error>
-            <Code>{escape(error_code)}</Code>
-            <Message>{escape(message)}</Message>
-            <Resource>{escape(resource)}</Resource>
+            <Code>{_xml_text(error_code)}</Code>
+            <Message>{_xml_text(message)}</Message>
+            <Resource>{_xml_text(resource)}</Resource>
         </Error>
         """),
         status_code=status_code,

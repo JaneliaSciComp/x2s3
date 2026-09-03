@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     """
 
     log_level: str = 'INFO'
+    # 'text' for human-readable logs, 'json' for one ECS-shaped JSON object
+    # per line, ready for a log shipper to forward to Elasticsearch/Kibana.
+    log_format: str = 'text'
     ui: bool = True
     virtual_buckets: bool = False
     base_url: Optional[HttpUrl] = None

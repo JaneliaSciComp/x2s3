@@ -174,3 +174,70 @@ class TestXSSPrevention:
         assert 'tab' in key_text
         assert 'newline' in key_text
         assert 'carriage' in key_text
+
+class TestMissingValues:
+    """Error responses must survive values the upstream did not supply.
+
+    escape() takes a string, so anything that reaches these templates as None
+    raised AttributeError while the error response was being built, turning a
+    handled upstream error into an unhandled 500 with a traceback. Real trigger:
+    an S3 backend answering with an empty <Resource/>, which botocore parses to
+    None.
+    """
+
+    def test_error_response_with_no_resource(self):
+        response = get_error_response(500, "InternalError", "Something failed", None)
+        assert response.status_code == 500
+        root = parse_xml(response.body.decode())
+        assert root.find('Resource').text is None
+
+    def test_error_response_with_no_message(self):
+        response = get_error_response(500, "InternalError", None, "/bucket/key")
+        root = parse_xml(response.body.decode())
+        assert root.find('Resource').text == "/bucket/key"
+
+    def test_nosuchkey_response_with_no_key(self):
+        """list_objects_v2 forwards its prefix as the key, and prefix is optional."""
+        response = get_nosuchkey_response(None)
+        assert response.status_code == 404
+        assert parse_xml(response.body.decode()).find('Code').text == 'NoSuchKey'
+
+    def test_error_response_with_non_string_detail(self):
+        """HTTPException.detail is not required to be a string."""
+        response = get_error_response(400, "InvalidArgument", {"msg": "bad"}, "/x")
+        root = parse_xml(response.body.decode())
+        assert "bad" in root.find('Message').text
+
+    def test_client_error_with_null_resource_is_handled(self):
+        """The reported failure, end to end through handle_s3_exception."""
+        from botocore.exceptions import ClientError
+        from x2s3.client_aioboto import handle_s3_exception
+
+        error = ClientError({
+            "ResponseMetadata": {"HTTPStatusCode": 500},
+            "Error": {"Code": "InternalError", "Message": "We encountered an "
+                      "internal error, please try again.", "Resource": None},
+        }, "ListObjectsV2")
+
+        response = handle_s3_exception(error, key=None)
+        assert response.status_code == 500
+        assert parse_xml(response.body.decode()).find('Code').text == 'InternalError'
+
+    def test_client_error_falls_back_to_the_key_for_the_resource(self):
+        """A null Resource must name the key, not report an empty one.
+
+        dict.get's default is skipped when the key is present but null, so the
+        fallback that was meant to run here never did.
+        """
+        from botocore.exceptions import ClientError
+        from x2s3.client_aioboto import handle_s3_exception
+
+        error = ClientError({
+            "ResponseMetadata": {"HTTPStatusCode": 403},
+            "Error": {"Code": "AccessDenied", "Message": "Access Denied",
+                      "Resource": None},
+        }, "ListObjectsV2")
+
+        response = handle_s3_exception(error, key="some/prefix/")
+        root = parse_xml(response.body.decode())
+        assert root.find('Resource').text == "some/prefix/"

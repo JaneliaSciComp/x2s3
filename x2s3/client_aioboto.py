@@ -57,7 +57,7 @@ def handle_s3_exception(e, key=None):
             return get_nosuchkey_response(key)
         else:
             message = error.get('Message', 'Unknown error')
-            resource = error.get('Resource', key or 'Unknown')
+            resource = error.get('Resource') or key or 'Unknown'
             return get_error_response(status_code, error_code, message, resource)
     else:
         logger.opt(exception=sys.exc_info()).error("Error communicating with AWS S3")

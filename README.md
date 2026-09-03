@@ -84,6 +84,7 @@ docker compose up -d
 
 * [Configuation](docs/Config.md) - how to use `config.yaml` to configure the service
 * [Development](docs/Development.md) - notes on developing the service codebase
+* [Structured Logging](docs/StructuredLogging.md) - JSON/ECS log output for Elasticsearch and Kibana
 
 
 # Attributions
