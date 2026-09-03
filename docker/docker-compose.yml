@@ -28,6 +28,7 @@ services:
       - ${VAR_DIR}:/app/x2s3/var
     environment:
       NUM_WORKERS: ${NUM_WORKERS:-8}
+      X2S3_LOG_FORMAT: ${X2S3_LOG_FORMAT:-json}
     logging:
       options:
         max-size: "128m"
