@@ -43,59 +43,6 @@ def handle_exception(e, key=None):
     return JSONResponse({"error":"Internal server error"}, status_code=500)
 
 
-def parse_range_header(range_header: str, file_size: int) -> Optional[Tuple[int, int]]:
-    """Parse HTTP Range header and return start and end byte positions.
-    
-    Args:
-        range_header: HTTP Range header value (e.g., "bytes=0-499")
-        file_size: Total size of the file
-        
-    Returns:
-        Tuple of (start, end) byte positions, or None if invalid
-    """
-    if not range_header or not range_header.startswith('bytes='):
-        return None
-    
-    try:
-        range_spec = range_header[6:]  # Remove 'bytes=' prefix
-        if ',' in range_spec:
-            # Multiple ranges not supported, return None to trigger 416
-            return None
-
-        if '-' not in range_spec:
-            return None
-            
-        start_str, end_str = range_spec.split('-', 1)
-        
-        if start_str and end_str:
-            # Both start and end specified: "bytes=0-499"
-            start = int(start_str)
-            end = int(end_str)
-        elif start_str and not end_str:
-            # Start specified, no end: "bytes=500-"
-            start = int(start_str)
-            end = file_size - 1
-        elif not start_str and end_str:
-            # End specified, no start (suffix range): "bytes=-500"
-            suffix_length = int(end_str)
-            start = max(0, file_size - suffix_length)
-            end = file_size - 1
-        else:
-            return None
-            
-        # Validate range
-        if start < 0 or end < 0 or start >= file_size or start > end:
-            return None
-            
-        # Clamp end to file size
-        end = min(end, file_size - 1)
-        
-        return (start, end)
-        
-    except (ValueError, IndexError):
-        return None
-
-
 # Threshold for logging large transfers (10 MB)
 LARGE_TRANSFER_THRESHOLD = 10 * 1024 * 1024
 
@@ -279,9 +226,12 @@ class FileProxyClient(ProxyClient):
 
             # Handle range requests
             if range_header:
-                range_result = parse_range_header(range_header, file_size)
+                try:
+                    range_result = parse_range_header(range_header, file_size)
+                except ValueError:
+                    range_result = None
                 if range_result is None:
-                    # Invalid range, return 416 Range Not Satisfiable
+                    # Invalid or unsatisfiable range, return 416 Range Not Satisfiable
                     file_handle.close()
                     headers["Content-Range"] = f"bytes */{file_size}"
                     return Response(
