@@ -79,3 +79,22 @@ def test_text_mode_stays_human_readable(capsys):
     err = capsys.readouterr().err
     assert '"GET /local-files/README.md HTTP/1.1" 200' in err
     assert "target=local-files" in err
+
+
+def test_json_mode_splits_ttfb_from_total_duration(capsys):
+    """TTFB must be present and no larger than the total, or the split is a lie."""
+    with _client("json") as client:
+        client.get("/local-files/README.md")
+
+    record = _access_lines(capsys.readouterr())[0]
+    ttfb_ms = record["labels.ttfb_ms"]
+    assert ttfb_ms > 0
+    # event.duration is nanoseconds; TTFB is part of it, not additional to it.
+    assert ttfb_ms <= record["event.duration"] / 1_000_000 + 0.001
+
+
+def test_text_mode_includes_ttfb(capsys):
+    with _client("text") as client:
+        client.get("/local-files/README.md")
+
+    assert "ttfb=" in capsys.readouterr().err
