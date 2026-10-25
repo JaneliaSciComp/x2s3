@@ -10,6 +10,7 @@ from loguru import logger
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 
 from x2s3.utils import *
+from x2s3.utils import parse_range_header as utils_parse_range_header
 from x2s3.client import ProxyClient, ObjectHandle
 
 
@@ -41,6 +42,17 @@ def handle_exception(e, key=None):
     """
     logger.opt(exception=sys.exc_info()).error(f"Error for {key}")
     return JSONResponse({"error":"Internal server error"}, status_code=500)
+
+
+def parse_range_header(range_header: Optional[str], file_size: int) -> Optional[Tuple[int, int]]:
+    """Legacy entry point kept for callers written against x2s3 <= 1.6: returns None
+    for anything it cannot serve, unsatisfiable ranges included. New code should use
+    x2s3.utils.parse_range_header, which distinguishes the two.
+    """
+    try:
+        return utils_parse_range_header(range_header, file_size)
+    except ValueError:
+        return None
 
 
 # Threshold for logging large transfers (10 MB)
@@ -226,10 +238,7 @@ class FileProxyClient(ProxyClient):
 
             # Handle range requests
             if range_header:
-                try:
-                    range_result = parse_range_header(range_header, file_size)
-                except ValueError:
-                    range_result = None
+                range_result = parse_range_header(range_header, file_size)
                 if range_result is None:
                     # Invalid or unsatisfiable range, return 416 Range Not Satisfiable
                     file_handle.close()
